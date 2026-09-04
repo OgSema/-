@@ -1,105 +1,76 @@
-# Магазин в Telegram (Mini App)
+# MoscowTab — магазин в Telegram (Mini App)
 
-Каталог + корзина внутри Telegram. Покупатель нажимает «Заказать» — бот пишет
-заказ ему в чат и присылает его администратору. Товары добавляются прямо
-в приложении: тот, чей Telegram ID указан в `ADMIN_IDS`, видит вкладку «Админ».
+Каталог и корзина внутри Telegram. Покупатель нажимает «Заказать» — бот пишет
+состав заказа ему в чат и присылает тот же заказ администратору с кнопкой
+«Написать клиенту». Товары добавляются прямо в приложении: тот, чей Telegram ID
+указан в `ADMIN_IDS`, видит вкладку «Админ».
+
+Хостинг полностью бесплатный: Cloudflare Workers (бэкенд + раздача фронта),
+D1 (база), фото хранятся в самом Telegram по `file_id` — ни диска, ни бакета,
+ни платёжной карты.
 
 ```
-backend/    FastAPI + SQLite: каталог, заказы, загрузка фото, проверка подписи Telegram
+worker/     Cloudflare Worker на Hono: API, проверка подписи Telegram, D1
 frontend/   React + Vite: каталог, корзина, админка
 ```
 
-## Как это авторизует админа
+## Как авторизуется админ
 
 Telegram отдаёт мини-приложению строку `initData`, подписанную HMAC-SHA256 на
-ключе от токена бота. Бэкенд проверяет подпись (`backend/app/auth.py`) и берёт
-оттуда user id. Подделать нельзя, не зная токена, поэтому отдельный логин
-и пароль не нужны — админ это просто id из `ADMIN_IDS`.
+ключе от токена бота. Worker проверяет подпись (`worker/src/auth.js`) и берёт
+оттуда user id. Подделать подпись, не зная токена, нельзя — поэтому отдельный
+логин и пароль не нужны: админ это просто id из `ADMIN_IDS`.
 
-## Запуск
+## Настройки
 
-### 1. Настроить
+| Переменная | Где задаётся | Что это |
+|---|---|---|
+| `BOT_TOKEN` | секрет: `npx wrangler secret put BOT_TOKEN` | токен от [@BotFather](https://t.me/BotFather) |
+| `ADMIN_IDS` | `wrangler.toml` → `[vars]` | Telegram ID админов через запятую |
+| `ORDER_CHAT_ID` | `wrangler.toml` → `[vars]` | куда слать заказы; пусто — в личку первому админу |
+| `SHOP_NAME` | `wrangler.toml` → `[vars]` | заголовок в шапке |
+| `DEV_MODE` | только локально | `1` — пускать без Telegram под фейковым админом |
 
-```bash
-cp .env.example .env      # и заполнить:
-```
-
-| Переменная | Что это |
-|---|---|
-| `BOT_TOKEN` | токен от [@BotFather](https://t.me/BotFather) |
-| `ADMIN_IDS` | твой Telegram ID (узнать у [@userinfobot](https://t.me/userinfobot)), можно несколько через запятую |
-| `ORDER_CHAT_ID` | куда слать заказы; пусто — в личку первому админу |
-| `SHOP_NAME` | заголовок в шапке |
-| `PUBLIC_URL` | публичный https-адрес (нужен для ссылок на загруженные фото) |
-| `DEV_MODE` | `1` — пускать без Telegram под фейковым админом. Только на localhost! |
-
-### 2. Локально
+## Локальный запуск
 
 ```bash
-# бэкенд
-cd backend
-python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
-./.venv/bin/python seed.py                     # демо-товары, по желанию
-DEV_MODE=1 ADMIN_IDS=1 ./.venv/bin/uvicorn app.main:app --port 8000
-
-# фронтенд (во втором терминале)
-cd frontend && npm install && npm run dev
+cd frontend && npm install && npm run build      # фронт собирается в frontend/dist
+cd ../worker && npm install
+npx wrangler d1 execute moscowtab --local --file=./schema.sql
+npx wrangler d1 execute moscowtab --local --file=./seed.sql     # демо-товары, по желанию
+npx wrangler dev --var BOT_TOKEN:тест --var DEV_MODE:1
 ```
 
-Открыть http://localhost:5173. `DEV_MODE=1` пускает в браузер без Telegram
-и делает тебя админом.
+Открыть http://localhost:8787 — `DEV_MODE=1` пускает без Telegram и делает
+тебя админом. Фронт при правках нужно пересобирать (`npm run build`).
 
-### 3. Проверки
+### Проверки
 
 ```bash
-cd backend && ./.venv/bin/python tests/smoke.py
+node tests/api.mjs        # подпись, права, остатки, заказы (worker должен быть запущен без DEV_MODE)
 ```
 
-Проверяет подпись initData, права админа, скрытие товаров без остатка,
-пересчёт суммы по базе, списание остатков и доступ к заказам.
-
-### 4. Прод
+## Деплой на Cloudflare
 
 ```bash
-docker compose up -d --build
+cd worker
+npx wrangler login                                  # один раз
+npx wrangler d1 create moscowtab                    # id из вывода вписать в wrangler.toml
+npx wrangler d1 execute moscowtab --remote --file=./schema.sql
+npx wrangler secret put BOT_TOKEN                   # вставить токен бота
+cd ../frontend && npm run build
+cd ../worker && npx wrangler deploy
 ```
 
-Контейнер собирает фронт и отдаёт его тем же процессом на порту 8000.
-База и загруженные фото лежат в `./data`. Дальше нужен https —
-поставь перед контейнером nginx с сертификатом или Caddy.
+Wrangler выдаст адрес вида `https://moscowtab.<аккаунт>.workers.dev`.
 
-### 4б. Деплой на Railway
-
-1. Залить проект в репозиторий на GitHub.
-2. На railway.app: **New Project → Deploy from GitHub repo** — Railway сам найдёт
-   `Dockerfile` и соберёт образ. Порт подставляется через `$PORT`, ничего настраивать не нужно.
-3. В **Variables** задать:
-
-   ```
-   BOT_TOKEN=...
-   ADMIN_IDS=...
-   SHOP_NAME=MoscowTab
-   DATABASE_URL=sqlite:///./data/shop.db
-   UPLOADS_DIR=./data/uploads
-   PUBLIC_URL=https://<домен из Railway>
-   ```
-
-4. **Settings → Networking → Generate Domain** — появится https-адрес.
-   Его же вписать в `PUBLIC_URL` и передеплоить.
-5. **Обязательно: Settings → Volumes → добавить том с mount path `/srv/backend/data`.**
-   Без тома SQLite и загруженные фото стираются при каждом деплое.
-
-Когда каталог перерастёт SQLite, в Railway можно добавить Postgres и поменять
-`DATABASE_URL` на строку вида `postgresql+psycopg://...` — код менять не придётся.
-
-### 5. Привязать к боту
+## Привязать к боту
 
 ```bash
-python3 set_menu_button.py https://твой-домен
+BOT_TOKEN=... python3 set_menu_button.py https://moscowtab.<аккаунт>.workers.dev
 ```
 
-Кнопка «Магазин» появится в меню бота. Там же в @BotFather можно задать
-`/setdomain` и добавить пункт меню вручную.
+Кнопка «Магазин» появится в меню бота.
 
 ## Что важно знать
 
@@ -107,8 +78,11 @@ python3 set_menu_button.py https://твой-домен
   товары — поэтому оплаты в приложении нет: заказ уходит в чат, дальше
   договариваетесь напрямую.
 - **Бот должен быть запущен покупателем.** Если человек открыл Mini App, но
-  никогда не нажимал `/start`, бот не сможет написать ему в личку — заказ
-  всё равно создастся и придёт админу, в ответе API будет `customer_notified: false`.
+  никогда не нажимал `/start`, бот не сможет написать ему в личку — заказ всё
+  равно создастся и придёт админу, в ответе API будет `customer_notified: false`.
 - **Цены и остатки считает сервер.** Корзина клиента передаёт только id и
-  количество, суммы берутся из базы.
+  количество; суммы берутся из базы, остаток списывается условием `stock >= qty`,
+  так что две одновременные покупки последней пачки не уведут склад в минус.
+- **Фото.** Админ загружает картинку → Worker отправляет её боту → в базе лежит
+  `file_id`, отдаётся через `/photo/<file_id>` с кэшем на неделю.
 - **Возрастной гейт** — экран 18+ перед каталогом, отметка хранится в браузере.

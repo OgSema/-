@@ -1,15 +1,15 @@
 """Привязывает Mini App к кнопке меню бота.
 
-  python3 set_menu_button.py https://myshop.example.com
+  python3 set_menu_button.py https://moscowtab.workers.dev
 
 Токен берётся из BOT_TOKEN в .env или из окружения.
 """
 
+import json
 import os
 import sys
 from pathlib import Path
 from urllib.request import Request, urlopen
-import json
 
 
 def bot_token() -> str:

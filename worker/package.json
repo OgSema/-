@@ -1,0 +1,17 @@
+{
+  "name": "moscowtab-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:init": "wrangler d1 execute moscowtab --remote --file=./schema.sql",
+    "db:init:local": "wrangler d1 execute moscowtab --local --file=./schema.sql"
+  },
+  "dependencies": {
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "wrangler": "^4.129.0"
+  }
+}

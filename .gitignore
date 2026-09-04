@@ -6,3 +6,5 @@ dist/
 __pycache__/
 *.db
 backend/uploads/
+.wrangler/
+worker/.dev.vars

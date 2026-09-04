@@ -1,0 +1,20 @@
+name = "moscowtab"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# Собранный React отдаётся тем же воркером: один домен, никакого CORS.
+[assets]
+directory = "../frontend/dist"
+not_found_handling = "single-page-application"
+
+[vars]
+SHOP_NAME = "MoscowTab"
+ADMIN_IDS = "7500381413"
+ORDER_CHAT_ID = ""
+
+# BOT_TOKEN хранится как секрет: npx wrangler secret put BOT_TOKEN
+
+[[d1_databases]]
+binding = "DB"
+database_name = "moscowtab"
+database_id = "local-placeholder"
