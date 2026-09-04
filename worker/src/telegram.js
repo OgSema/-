@@ -1,18 +1,39 @@
-const api = (env, method) => `https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`
+const base = (env) => env.TELEGRAM_API_BASE || 'https://api.telegram.org'
+const api = (env, method) => `${base(env)}/bot${env.BOT_TOKEN}/${method}`
 
-export async function sendMessage(env, chatId, text, replyMarkup) {
-  if (!env.BOT_TOKEN || !chatId) return false
-  const body = { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true }
-  if (replyMarkup) body.reply_markup = replyMarkup
-
-  const res = await fetch(api(env, 'sendMessage'), {
+export async function call(env, method, payload) {
+  if (!env.BOT_TOKEN) return { ok: false, description: 'BOT_TOKEN не настроен' }
+  const res = await fetch(api(env, method), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   })
-  // Частый случай: покупатель не нажимал /start, бот не может ему написать.
-  return res.ok
+  return res.json().catch(() => ({ ok: false }))
 }
+
+export async function sendMessage(env, chatId, text, extra = {}) {
+  if (!chatId) return false
+  // Частый случай: покупатель не нажимал /start — тогда бот не может ему написать.
+  const r = await call(env, 'sendMessage', {
+    chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true, ...extra,
+  })
+  return !!r.ok
+}
+
+export const editMessage = (env, chatId, messageId, text, extra = {}) =>
+  call(env, 'editMessageText', {
+    chat_id: chatId, message_id: messageId, text, parse_mode: 'HTML',
+    disable_web_page_preview: true, ...extra,
+  })
+
+export const sendPhoto = (env, chatId, photo, caption, extra = {}) =>
+  call(env, 'sendPhoto', { chat_id: chatId, photo, caption, parse_mode: 'HTML', ...extra })
+
+export const answerCallback = (env, id, text) =>
+  call(env, 'answerCallbackQuery', { callback_query_id: id, text, show_alert: false })
+
+export const deleteMessage = (env, chatId, messageId) =>
+  call(env, 'deleteMessage', { chat_id: chatId, message_id: messageId })
 
 /** Фото храним в самом Telegram: возвращает file_id загруженной картинки. */
 export async function uploadPhoto(env, chatId, file) {
@@ -32,5 +53,5 @@ export async function uploadPhoto(env, chatId, file) {
 export async function fetchPhoto(env, fileId) {
   const info = await (await fetch(api(env, 'getFile') + `?file_id=${encodeURIComponent(fileId)}`)).json()
   if (!info.ok) return null
-  return fetch(`https://api.telegram.org/file/bot${env.BOT_TOKEN}/${info.result.file_path}`)
+  return fetch(`${base(env)}/file/bot${env.BOT_TOKEN}/${info.result.file_path}`)
 }

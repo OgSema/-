@@ -5,13 +5,23 @@
 «Написать клиенту». Товары добавляются прямо в приложении: тот, чей Telegram ID
 указан в `ADMIN_IDS`, видит вкладку «Админ».
 
-Хостинг полностью бесплатный: Cloudflare Workers (бэкенд + раздача фронта),
+Есть две витрины поверх одной базы:
+
+- **Магазин в чате бота** — каталог кнопками, карточки с фото, корзина, заказ
+  и админка прямо в переписке. Работает даже там, где провайдер режет домен
+  приложения: телефон общается только с Telegram, а до Worker достукивается
+  сам Telegram.
+- **Mini App** — то же самое отдельным приложением с сеткой товаров. Требует,
+  чтобы телефон сам открыл наш домен, поэтому при блокировках может не грузиться.
+
+Хостинг полностью бесплатный: Cloudflare Workers (бэкенд, бот и раздача фронта),
 D1 (база), фото хранятся в самом Telegram по `file_id` — ни диска, ни бакета,
 ни платёжной карты.
 
 ```
-worker/     Cloudflare Worker на Hono: API, проверка подписи Telegram, D1
-frontend/   React + Vite: каталог, корзина, админка
+worker/src/bot/   магазин в чате: витрина, корзина, пошаговая админка
+worker/src/       API Mini App, проверка подписи Telegram, общая логика заказов
+frontend/         React + Vite: каталог, корзина, админка приложения
 ```
 
 ## Как авторизуется админ
@@ -47,7 +57,16 @@ npx wrangler dev --var BOT_TOKEN:тест --var DEV_MODE:1
 ### Проверки
 
 ```bash
-node tests/api.mjs        # подпись, права, остатки, заказы (worker должен быть запущен без DEV_MODE)
+# 1. подставной Telegram API — ловит исходящие вызовы бота
+TG_LOG=/tmp/tgcalls.jsonl node tests/mock.mjs &
+
+# 2. worker с боевой авторизацией и моком вместо Telegram
+npx wrangler dev --var BOT_TOKEN:111111:TEST-TOKEN \
+  --var TELEGRAM_API_BASE:http://localhost:9099 --var WEBHOOK_SECRET:testsecret
+
+# 3. проверки
+node tests/api.mjs                              # подпись, права, остатки, заказы Mini App
+TG_LOG=/tmp/tgcalls.jsonl node tests/bot.mjs    # весь путь покупателя и админа в чате
 ```
 
 ## Деплой на Cloudflare
@@ -58,6 +77,7 @@ npx wrangler login                                  # один раз
 npx wrangler d1 create moscowtab                    # id из вывода вписать в wrangler.toml
 npx wrangler d1 execute moscowtab --remote --file=./schema.sql
 npx wrangler secret put BOT_TOKEN                   # вставить токен бота
+npx wrangler secret put WEBHOOK_SECRET              # любая случайная строка
 cd ../frontend && npm run build
 cd ../worker && npx wrangler deploy
 ```
@@ -66,11 +86,21 @@ Wrangler выдаст адрес вида `https://moscowtab.moscowtab.workers.d
 
 ## Привязать к боту
 
+Магазин в чате (основной режим) — подключается вебхуком:
+
+```bash
+curl -X POST "https://api.telegram.org/bot$BOT_TOKEN/setWebhook" \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://moscowtab.moscowtab.workers.dev/tg",
+       "secret_token":"тот же WEBHOOK_SECRET",
+       "allowed_updates":["message","callback_query"]}'
+```
+
+Mini App (если домен доступен) вешается кнопкой меню:
+
 ```bash
 BOT_TOKEN=... python3 set_menu_button.py https://moscowtab.moscowtab.workers.dev
 ```
-
-Кнопка «Магазин» появится в меню бота.
 
 ## Что важно знать
 
@@ -85,4 +115,8 @@ BOT_TOKEN=... python3 set_menu_button.py https://moscowtab.moscowtab.workers.dev
   так что две одновременные покупки последней пачки не уведут склад в минус.
 - **Фото.** Админ загружает картинку → Worker отправляет её боту → в базе лежит
   `file_id`, отдаётся через `/photo/<file_id>` с кэшем на неделю.
-- **Возрастной гейт** — экран 18+ перед каталогом, отметка хранится в браузере.
+- **Возрастной гейт** — экран 18+ перед каталогом: в приложении отметка хранится
+  в браузере, в боте — в таблице `sessions`.
+- **Блокировки.** `*.workers.dev` у части мобильных операторов не открывается —
+  поэтому основная витрина живёт в чате. Если появится свой домен, его можно
+  привязать к тому же Worker как Custom Domain, и Mini App заработает у всех.

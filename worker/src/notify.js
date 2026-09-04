@@ -8,25 +8,32 @@ const clientLink = (order) =>
     ? `@${order.username}`
     : `<a href="tg://user?id=${order.tg_user_id}">${order.customer_name || 'клиенту'}</a>`
 
-export async function notifyNewOrder(env, order) {
-  const customer = await sendMessage(
-    env,
-    order.tg_user_id,
-    `<b>Заказ №${order.id} принят</b>\n\n${lines(order.items)}\n\n` +
-      `<b>Итого: ${order.total} ₽</b>\n\nСкоро напишем сюда, чтобы подтвердить детали.`,
-  )
+export const adminChat = (env) =>
+  env.ORDER_CHAT_ID || String(env.ADMIN_IDS || '').split(',')[0].trim()
 
-  const markup = order.username
-    ? { inline_keyboard: [[{ text: 'Написать клиенту', url: `https://t.me/${order.username}` }]] }
-    : undefined
-
-  const admin = await sendMessage(
+export const notifyAdmin = (env, order) =>
+  sendMessage(
     env,
-    env.ORDER_CHAT_ID || String(env.ADMIN_IDS || '').split(',')[0].trim(),
+    adminChat(env),
     `🛒 <b>Новый заказ №${order.id}</b>\nКлиент: ${clientLink(order)} (id ${order.tg_user_id})\n\n` +
       `${lines(order.items)}\n\n<b>Итого: ${order.total} ₽</b>`,
-    markup,
+    order.username
+      ? { reply_markup: { inline_keyboard: [[{ text: 'Написать клиенту', url: `https://t.me/${order.username}` }]] } }
+      : {},
   )
 
-  return { customer_notified: customer, admin_notified: admin }
+export const notifyCustomer = (env, order) =>
+  sendMessage(
+    env,
+    order.tg_user_id,
+    `<b>Заказ №${order.id} принят</b>\n\n${lines(order.items)}\n\n<b>Итого: ${order.total} ₽</b>\n\n` +
+      'Скоро напишем сюда, чтобы подтвердить детали.',
+  )
+
+/** Для Mini App: пишем и покупателю, и админу. */
+export async function notifyNewOrder(env, order) {
+  return {
+    customer_notified: await notifyCustomer(env, order),
+    admin_notified: await notifyAdmin(env, order),
+  }
 }

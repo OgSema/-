@@ -40,3 +40,11 @@ CREATE TABLE IF NOT EXISTS order_items (
 
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
+
+-- Состояние диалога с ботом и корзина: у Worker нет памяти между запросами.
+CREATE TABLE IF NOT EXISTS sessions (
+  user_id    INTEGER PRIMARY KEY,
+  state      TEXT NOT NULL DEFAULT '{}',
+  cart       TEXT NOT NULL DEFAULT '{}',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

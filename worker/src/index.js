@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
 import { HttpError, currentUser, requireAdmin } from './auth.js'
-import { notifyNewOrder } from './notify.js'
+import { handleUpdate } from './bot/index.js'
+import { adminChat, notifyNewOrder } from './notify.js'
+import { createOrder, listCategories, listProducts, orderItems, productRow } from './shop.js'
 import { fetchPhoto, uploadPhoto } from './telegram.js'
 
 const app = new Hono()
@@ -11,8 +13,7 @@ app.onError((err, c) => {
   return c.json({ detail: err.message || 'Внутренняя ошибка' }, status)
 })
 
-const product = (row) => ({ ...row, is_active: !!row.is_active })
-const storageChat = (env) => env.ORDER_CHAT_ID || String(env.ADMIN_IDS || '').split(',')[0].trim()
+const product = productRow
 
 // ---------- профиль ----------
 
@@ -23,10 +24,7 @@ app.get('/api/me', async (c) => {
 
 // ---------- категории ----------
 
-app.get('/api/categories', async (c) => {
-  const { results } = await c.env.DB.prepare('SELECT * FROM categories ORDER BY sort, name').all()
-  return c.json(results)
-})
+app.get('/api/categories', async (c) => c.json(await listCategories(c.env.DB)))
 
 app.post('/api/categories', async (c) => {
   await requireAdmin(c)
@@ -50,12 +48,9 @@ app.delete('/api/categories/:id', async (c) => {
 // ---------- товары ----------
 
 app.get('/api/products', async (c) => {
-  const user = await currentUser(c)
   // Покупатель видит только опубликованные позиции в наличии.
-  const where = user.is_admin ? '1=1' : 'is_active = 1 AND stock > 0'
-  const { results } = await c.env.DB
-    .prepare(`SELECT * FROM products WHERE ${where} ORDER BY created_at DESC, id DESC`).all()
-  return c.json(results.map(product))
+  const user = await currentUser(c)
+  return c.json(await listProducts(c.env.DB, { all: user.is_admin }))
 })
 
 const productFields = (body) => [
@@ -104,7 +99,7 @@ app.post('/api/upload', async (c) => {
   if (file.size > 5 * 1024 * 1024) throw new HttpError(413, 'Файл больше 5 МБ')
 
   // Картинки храним в Telegram — не нужно ни диска, ни бакета.
-  const fileId = await uploadPhoto(c.env, storageChat(c.env), file)
+  const fileId = await uploadPhoto(c.env, adminChat(c.env), file)
   return c.json({ url: `/photo/${encodeURIComponent(fileId)}` })
 })
 
@@ -128,56 +123,13 @@ app.get('/photo/:fileId', async (c) => {
 
 // ---------- заказы ----------
 
-const withItems = async (db, order) => {
-  const { results } = await db.prepare('SELECT name, price, qty FROM order_items WHERE order_id = ?')
-    .bind(order.id).all()
-  return { ...order, items: results }
-}
+const withItems = async (db, order) => ({ ...order, items: await orderItems(db, order.id) })
 
 app.post('/api/orders', async (c) => {
   const user = await currentUser(c)
   const { items } = await c.req.json()
-  if (!items?.length) throw new HttpError(400, 'Корзина пуста')
-
-  const lines = []
-  let total = 0
-  for (const line of items) {
-    const qty = Number(line.qty)
-    if (!Number.isInteger(qty) || qty < 1) throw new HttpError(400, 'Некорректное количество')
-
-    const row = await c.env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(Number(line.product_id)).first()
-    if (!row || !row.is_active) throw new HttpError(400, `Товар ${line.product_id} недоступен`)
-    if (row.stock < qty) throw new HttpError(409, `«${row.name}»: осталось ${row.stock} шт.`)
-
-    // Цену берём из базы, а не из корзины клиента.
-    lines.push({ product_id: row.id, name: row.name, price: row.price, qty })
-    total += row.price * qty
-  }
-
-  const order = await c.env.DB.prepare(
-    `INSERT INTO orders (tg_user_id, username, customer_name, total) VALUES (?, ?, ?, ?) RETURNING *`,
-  ).bind(user.id, user.username, user.name, total).first()
-
-  // Остаток списываем условием stock >= qty: если кто-то успел раньше, изменений не будет.
-  const writes = await c.env.DB.batch(lines.flatMap((l) => [
-    c.env.DB.prepare('UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?')
-      .bind(l.qty, l.product_id, l.qty),
-    c.env.DB.prepare('INSERT INTO order_items (order_id, product_id, name, price, qty) VALUES (?, ?, ?, ?, ?)')
-      .bind(order.id, l.product_id, l.name, l.price, l.qty),
-  ]))
-
-  const soldOut = writes.filter((_, i) => i % 2 === 0).some((r) => r.meta.changes === 0)
-  if (soldOut) {
-    await c.env.DB.batch([
-      c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(order.id),
-      c.env.DB.prepare('DELETE FROM orders WHERE id = ?').bind(order.id),
-    ])
-    throw new HttpError(409, 'Товар разобрали, пока вы оформляли заказ')
-  }
-
-  const full = { ...order, items: lines }
-  const delivered = await notifyNewOrder(c.env, full)
-  return c.json({ ...full, ...delivered })
+  const order = await createOrder(c.env, user, items)
+  return c.json({ ...order, ...(await notifyNewOrder(c.env, order)) })
 })
 
 app.get('/api/orders', async (c) => {
@@ -197,6 +149,22 @@ app.patch('/api/orders/:id', async (c) => {
   return c.json(await withItems(c.env.DB, order))
 })
 
-app.get('/health', (c) => c.json({ ok: true, bot_configured: !!c.env.BOT_TOKEN }))
+// ---------- вебхук бота ----------
+
+app.post('/tg', async (c) => {
+  // Секрет Telegram присылает заголовком — чужой запрос сюда не пройдёт.
+  if (!c.env.WEBHOOK_SECRET || c.req.header('X-Telegram-Bot-Api-Secret-Token') !== c.env.WEBHOOK_SECRET) {
+    return c.text('forbidden', 403)
+  }
+  const update = await c.req.json()
+  c.executionCtx.waitUntil(handleUpdate(c.env, update))
+  return c.json({ ok: true })
+})
+
+app.get('/health', (c) => c.json({
+  ok: true,
+  bot_configured: !!c.env.BOT_TOKEN,
+  webhook_configured: !!c.env.WEBHOOK_SECRET,
+}))
 
 export default app
