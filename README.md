@@ -62,12 +62,12 @@ cd ../frontend && npm run build
 cd ../worker && npx wrangler deploy
 ```
 
-Wrangler выдаст адрес вида `https://moscowtab.<аккаунт>.workers.dev`.
+Wrangler выдаст адрес вида `https://moscowtab.moscowtab.workers.dev`.
 
 ## Привязать к боту
 
 ```bash
-BOT_TOKEN=... python3 set_menu_button.py https://moscowtab.<аккаунт>.workers.dev
+BOT_TOKEN=... python3 set_menu_button.py https://moscowtab.moscowtab.workers.dev
 ```
 
 Кнопка «Магазин» появится в меню бота.

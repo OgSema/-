@@ -17,4 +17,4 @@ ORDER_CHAT_ID = ""
 [[d1_databases]]
 binding = "DB"
 database_name = "moscowtab"
-database_id = "local-placeholder"
+database_id = "6a592dd7-880d-44a1-b85c-e9331e51887f"
