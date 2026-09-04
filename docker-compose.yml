@@ -1,0 +1,12 @@
+services:
+  shop:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: sqlite:///./data/shop.db
+      UPLOADS_DIR: ./data/uploads
+    volumes:
+      - ./data:/srv/backend/data
+    ports:
+      - "8000:8000"
