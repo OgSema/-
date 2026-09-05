@@ -19,7 +19,9 @@ SHOP_NAME = "MoscowTab"
 ADMIN_IDS = "7500381413"
 ORDER_CHAT_ID = ""
 # Адрес Mini App: бот ставит кнопку «Магазин» каждому при /start.
-MINI_APP_URL = "https://trydokli.ru"
+# Временно на workers.dev: адреса 188.114.x, выданные зоне trydokli.ru,
+# не проходят у части сетей. Вернуть домен, когда переедет на другие IP.
+MINI_APP_URL = "https://moscowtab.moscowtab.workers.dev"
 
 # BOT_TOKEN хранится как секрет: npx wrangler secret put BOT_TOKEN
 
