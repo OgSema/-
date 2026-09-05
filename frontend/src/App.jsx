@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from './api'
-import { initTelegram } from './tg'
+import { addToHomeScreen, homeScreenStatus, initTelegram, onEvent } from './tg'
 import AgeGate from './components/AgeGate'
 import Catalog from './components/Catalog'
 import Cart from './components/Cart'
@@ -16,6 +16,7 @@ export default function App() {
   const [products, setProducts] = useState([])
   const [cart, setCart] = useState({})
   const [banners, setBanners] = useState([])
+  const [shortcut, setShortcut] = useState('unsupported')   // ярлык на экране телефона
 
   const load = useCallback(async () => {
     const [cats, items, ads] = await Promise.all([api.categories(), api.products(), api.banners()])
@@ -31,6 +32,12 @@ export default function App() {
       .then(load)
       .catch((e) => setError(e.message))
   }, [load])
+
+  useEffect(() => {
+    homeScreenStatus().then(setShortcut)
+    // Telegram не сообщает результат сразу: ярлык появляется после согласия.
+    return onEvent('homeScreenAdded', () => setShortcut('added'))
+  }, [])
 
   const addToCart = (product) => setCart((c) => ({ ...c, [product.id]: (c[product.id] || 0) + 1 }))
   const setQty = (id, qty) =>
@@ -52,6 +59,9 @@ export default function App() {
       <header className="header">
         <h1>{user.shop_name}</h1>
         {user.is_admin && <span className="badge">админ</span>}
+        {(shortcut === 'missed' || shortcut === 'unknown') && (
+          <button className="ghost shortcut" onClick={addToHomeScreen}>На экран</button>
+        )}
       </header>
 
       <main className="content">
