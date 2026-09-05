@@ -29,6 +29,19 @@ export const editMessage = (env, chatId, messageId, text, extra = {}) =>
 export const sendPhoto = (env, chatId, photo, caption, extra = {}) =>
   call(env, 'sendPhoto', { chat_id: chatId, photo, caption, parse_mode: 'HTML', ...extra })
 
+/**
+ * Кнопка «Магазин» рядом с полем ввода, открывающая Mini App.
+ * Ставим каждому в личном чате: дефолтная кнопка бота задаётся в BotFather,
+ * и через API она не переопределяется.
+ */
+export const setMenuButton = (env, chatId) =>
+  env.MINI_APP_URL
+    ? call(env, 'setChatMenuButton', {
+        chat_id: chatId,
+        menu_button: { type: 'web_app', text: 'Магазин', web_app: { url: env.MINI_APP_URL } },
+      })
+    : Promise.resolve({ ok: false })
+
 export const answerCallback = (env, id, text) =>
   call(env, 'answerCallbackQuery', { callback_query_id: id, text, show_alert: false })
 

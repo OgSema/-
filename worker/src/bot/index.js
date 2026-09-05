@@ -10,7 +10,7 @@
 import { adminIds } from '../auth.js'
 import { createOrder, getProduct, getSession, listCategories, listProducts, saveSession } from '../shop.js'
 import { notifyAdmin } from '../notify.js'
-import { answerCallback, editMessage, sendMessage, sendPhoto } from '../telegram.js'
+import { answerCallback, editMessage, sendMessage, sendPhoto, setMenuButton } from '../telegram.js'
 import * as admin from './admin.js'
 import * as v from './views.js'
 
@@ -70,6 +70,7 @@ async function onMessage(env, message) {
   const text = (message.text || '').trim()
 
   if (text === '/start') {
+    await setMenuButton(env, chatId)
     if (!session.state.adult) {
       return sendMessage(env, chatId, v.AGE_TEXT, { reply_markup: v.ageKeyboard() })
     }

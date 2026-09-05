@@ -18,6 +18,8 @@ not_found_handling = "single-page-application"
 SHOP_NAME = "MoscowTab"
 ADMIN_IDS = "7500381413"
 ORDER_CHAT_ID = ""
+# Адрес Mini App: бот ставит кнопку «Магазин» каждому при /start.
+MINI_APP_URL = "https://trydokli.ru"
 
 # BOT_TOKEN хранится как секрет: npx wrangler secret put BOT_TOKEN
 
