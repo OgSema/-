@@ -4,6 +4,7 @@ import { addToHomeScreen, homeScreenStatus, initTelegram, onEvent } from './tg'
 import AgeGate from './components/AgeGate'
 import Catalog from './components/Catalog'
 import Cart from './components/Cart'
+import Profile from './components/Profile'
 import Admin from './components/Admin'
 
 /** Корзина переживает закрытие Mini App: Telegram выгружает страницу целиком. */
@@ -26,6 +27,7 @@ export default function App() {
   const [products, setProducts] = useState([])
   const [cart, setCart] = useState(savedCart)
   const [banners, setBanners] = useState([])
+  const [tier, setTier] = useState(null)              // уровень лояльности покупателя
   const [shortcut, setShortcut] = useState('unsupported')   // ярлык на экране телефона
 
   const load = useCallback(async () => {
@@ -52,6 +54,8 @@ export default function App() {
       .then(setUser)
       .then(load)
       .catch((e) => setError(e.message))
+    // Уровень нужен уже в корзине — показать скидку до открытия профиля.
+    api.profile().then((p) => setTier(p.tier)).catch(() => { /* профиль подождёт */ })
   }, [load])
 
   useEffect(() => {
@@ -100,10 +104,12 @@ export default function App() {
             cart={cart}
             products={products}
             user={user}
+            tier={tier}
             onQty={setQty}
             onDone={() => { setCart({}); setTab('catalog'); load() }}
           />
         )}
+        {tab === 'profile' && <Profile />}
         {tab === 'admin' && user.is_admin && (
           <Admin categories={categories} products={products} onChange={load} />
         )}
@@ -115,6 +121,9 @@ export default function App() {
         </button>
         <button className={tab === 'cart' ? 'active' : ''} onClick={() => setTab('cart')}>
           Корзина{cartCount > 0 && <span className="dot">{cartCount}</span>}
+        </button>
+        <button className={tab === 'profile' ? 'active' : ''} onClick={() => setTab('profile')}>
+          Профиль
         </button>
         {user.is_admin && (
           <button className={tab === 'admin' ? 'active' : ''} onClick={() => setTab('admin')}>

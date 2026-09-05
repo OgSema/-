@@ -3,7 +3,7 @@ import crypto from 'node:crypto'
 const BASE = 'http://localhost:8787'
 const TOKEN = '111111:TEST-TOKEN'
 const ADMIN = Number(process.env.ADMIN_ID || 7500381413)
-const CUSTOMER = 777
+const CUSTOMER = 800000 + Math.floor(Math.random() * 100000)
 
 const initData = (id, username = '') => {
   const f = {
@@ -168,7 +168,89 @@ const promoList = await (await call('/api/promos', ADMIN)).json()
 check('счётчик применений вырос ровно на одно',
   promoList.find((x) => x.id === limited.id)?.used_count === 1)
 
-// 6. Баннеры
+// 6. Лояльность
+const LOYAL = 900000 + rnd()
+const loyaltyItem = await (await call('/api/products', ADMIN, {
+  method: 'POST', body: JSON.stringify({ name: 'Товар для уровней', price: 1000, stock: 60 }),
+})).json()
+const buy = (qty, code = '', id = LOYAL) => call('/api/orders', id, {
+  method: 'POST', username: 'loyal',
+  body: JSON.stringify({ items: [{ product_id: loyaltyItem.id, qty }], promo_code: code, ...DELIVERY }),
+})
+const profile = (id = LOYAL) => call('/api/profile', id).then((r) => r.json())
+const confirm = (orderId, status) => call(`/api/orders/${orderId}`, ADMIN, {
+  method: 'PATCH', body: JSON.stringify({ status }),
+})
+
+const fresh = await profile()
+check('новый покупатель без уровня', fresh.spent === 0 && fresh.tier === null && fresh.next.name === 'SILVER',
+  JSON.stringify({ spent: fresh.spent, tier: fresh.tier }))
+
+const first = await (await buy(3)).json()
+check('заказ создан без скидки', first.total === 3000 && first.discount === 0)
+const pending = await profile()
+check('неподтверждённый заказ выкуп не даёт', pending.spent === 0 && pending.tier === null, `выкуп ${pending.spent}`)
+
+await confirm(first.id, 'confirmed')
+const silver = await profile()
+check('после подтверждения выкуп засчитан', silver.spent === 3000, `выкуп ${silver.spent}`)
+check('уровень SILVER даёт 5%', silver.tier?.name === 'SILVER' && silver.tier?.percent === 5,
+  JSON.stringify(silver.tier))
+check('до GOLD показан остаток', silver.next?.name === 'GOLD' && silver.left === 4000,
+  `осталось ${silver.left}`)
+check('своя история заказов видна', silver.orders.length === 1 && silver.orders[0].items.length === 1)
+
+const withTier = await (await buy(1)).json()
+check('скидка уровня применяется сама', withTier.discount === 50 && withTier.total === 950,
+  `итого ${withTier.total}, скидка ${withTier.discount}`)
+check('в заказе отмечен уровень', withTier.loyalty_tier === 'SILVER' && withTier.promo_code === '')
+
+// Не суммируется: код слабее уровня — применяется уровень, код остаётся целым.
+const weak = await (await mkPromo({
+  code: 'WEAK' + rnd(), kind: 'percent', value: 3, starts_at: day(-1), ends_at: day(7), max_uses: 1,
+})).json()
+const weakOrder = await (await buy(1, weak.code)).json()
+check('скидка уровня выигрывает у слабого кода',
+  weakOrder.discount === 50 && weakOrder.loyalty_tier === 'SILVER' && weakOrder.promo_code === '',
+  `скидка ${weakOrder.discount}, код «${weakOrder.promo_code}»`)
+const weakAfter = (await (await call('/api/promos', ADMIN)).json()).find((x) => x.id === weak.id)
+check('непринятый код не потрачен', weakAfter.used_count === 0, `использован ${weakAfter.used_count}`)
+
+// Код сильнее уровня — тогда уровень уступает, но скидки всё равно не складываются.
+const strong = await (await mkPromo({
+  code: 'STRONG' + rnd(), kind: 'percent', value: 20, starts_at: day(-1), ends_at: day(7),
+})).json()
+const strongOrder = await (await buy(1, strong.code)).json()
+check('сильный код выигрывает у уровня',
+  strongOrder.discount === 200 && strongOrder.promo_code === strong.code && strongOrder.loyalty_tier === '',
+  `скидка ${strongOrder.discount}`)
+
+const preview = await (await call('/api/promos/check', LOYAL, {
+  method: 'POST', body: JSON.stringify({ code: weak.code, items: [{ product_id: loyaltyItem.id, qty: 1 }] }),
+})).json()
+check('проверка кода показывает победившую скидку',
+  preview.applied === 'loyalty' && preview.discount === 50 && preview.tier === 'SILVER',
+  JSON.stringify(preview))
+
+await confirm(first.id, 'canceled')
+const canceled = await profile()
+check('отменённый заказ выкуп забирает', canceled.spent === 0 && canceled.tier === null, `выкуп ${canceled.spent}`)
+
+// Верхний уровень: порог 20 000 ₽.
+const VIP = 910000 + rnd()
+const vipItem = await (await call('/api/products', ADMIN, {
+  method: 'POST', body: JSON.stringify({ name: 'Кальян в сборе', price: 20000, stock: 3 }),
+})).json()
+const vipOrder = await (await call('/api/orders', VIP, {
+  method: 'POST', body: JSON.stringify({ items: [{ product_id: vipItem.id, qty: 1 }], ...DELIVERY }),
+})).json()
+await confirm(vipOrder.id, 'done')
+const vip = await profile(VIP)
+check('выкуп на 20 000 даёт VIP 25%', vip.tier?.name === 'VIP' && vip.tier?.percent === 25, JSON.stringify(vip.tier))
+check('на верхнем уровне полоса залита', vip.next === null && vip.progress === 1)
+check('чужие заказы в профиль не попали', vip.orders.every((o) => o.id === vipOrder.id))
+
+// 7. Баннеры
 check('покупатель не может добавить баннер', (await call('/api/banners', CUSTOMER, {
   method: 'POST', body: JSON.stringify({ photo_url: '/photo/x' }),
 })).status === 403)
@@ -184,9 +266,13 @@ check('баннер виден покупателю', (await (await call('/api/b
 await call(`/api/banners/${banner.id}`, ADMIN, { method: 'DELETE' })
 check('баннер удалён', !(await (await call('/api/banners', CUSTOMER)).json()).some((b) => b.id === banner.id))
 
-// 7. Уборка тестовых данных
-for (const id of [promo.id, expired.id, bigOff.id, limited.id]) await call(`/api/promos/${id}`, ADMIN, { method: 'DELETE' })
-for (const id of [created.id, hidden.id, promoItem.id]) await call(`/api/products/${id}`, ADMIN, { method: 'DELETE' })
+// 8. Уборка тестовых данных
+for (const id of [promo.id, expired.id, bigOff.id, limited.id, weak.id, strong.id]) {
+  await call(`/api/promos/${id}`, ADMIN, { method: 'DELETE' })
+}
+for (const id of [created.id, hidden.id, promoItem.id, loyaltyItem.id, vipItem.id]) {
+  await call(`/api/products/${id}`, ADMIN, { method: 'DELETE' })
+}
 
 console.log(failed ? '\nЕСТЬ ПАДЕНИЯ' : '\nвсе проверки прошли')
 process.exit(failed ? 1 : 0)

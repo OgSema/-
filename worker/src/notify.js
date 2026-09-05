@@ -3,11 +3,12 @@ import { sendMessage } from './telegram.js'
 const lines = (items) =>
   items.map((i) => `• ${i.name} — ${i.qty} × ${i.price} ₽ = ${i.qty * i.price} ₽`).join('\n')
 
-/** Строка со скидкой появляется, только если промокод действительно сработал. */
-const discountLine = (order) =>
-  order.discount > 0
-    ? `\n\nБез скидки: ${order.total + order.discount} ₽\nПромокод ${order.promo_code}: −${order.discount} ₽`
-    : ''
+/** Строка со скидкой: её даёт либо промокод, либо уровень лояльности. */
+const discountLine = (order) => {
+  if (order.discount <= 0) return ''
+  const source = order.promo_code ? `Промокод ${order.promo_code}` : `Уровень ${order.loyalty_tier}`
+  return `\n\nБез скидки: ${order.total + order.discount} ₽\n${source}: −${order.discount} ₽`
+}
 
 /** Куда везти и как связаться — то, ради чего админ вообще открывает сообщение. */
 const delivery = (order) => {

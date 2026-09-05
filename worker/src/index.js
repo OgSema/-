@@ -2,7 +2,8 @@ import { Hono } from 'hono'
 import { HttpError, currentUser, requireAdmin } from './auth.js'
 import { handleUpdate } from './bot/index.js'
 import { adminChat, notifyNewOrder } from './notify.js'
-import { createOrder, deliveryFields, findPromo, listCategories, listProducts, orderItems, priceCart, productRow, promoDiscount } from './shop.js'
+import { createOrder, deliveryFields, effectiveDiscount, findPromo, listCategories, listProducts, orderItems, priceCart, productRow } from './shop.js'
+import { TIERS, loyaltyStatus, spentByUser, tierFor } from './loyalty.js'
 import { fetchPhoto, uploadPhoto } from './telegram.js'
 
 const app = new Hono()
@@ -20,6 +21,24 @@ const product = productRow
 app.get('/api/me', async (c) => {
   const user = await currentUser(c)
   return c.json({ ...user, shop_name: c.env.SHOP_NAME || 'Магазин' })
+})
+
+// ---------- профиль и лояльность ----------
+
+/** Личный кабинет: уровень, путь до следующего и своя история заказов. */
+app.get('/api/profile', async (c) => {
+  const user = await currentUser(c)
+  const spent = await spentByUser(c.env.DB, user.id)
+
+  const { results } = await c.env.DB
+    .prepare('SELECT * FROM orders WHERE tg_user_id = ? ORDER BY id DESC LIMIT 50').bind(user.id).all()
+
+  return c.json({
+    user,
+    ...loyaltyStatus(spent),
+    tiers: TIERS,
+    orders: await Promise.all(results.map((o) => withItems(c.env.DB, o))),
+  })
 })
 
 // ---------- категории ----------
@@ -193,17 +212,20 @@ app.delete('/api/promos/:id', async (c) => {
 
 /** Покупатель проверяет код до оформления: сумму считаем по базе, не по корзине клиента. */
 app.post('/api/promos/check', async (c) => {
-  await currentUser(c)
+  const user = await currentUser(c)
   const { code, items } = await c.req.json()
 
   const promo = await findPromo(c.env.DB, code)
   if (!promo) throw new HttpError(404, 'Код не найден или срок действия истёк')
 
   const { total } = await priceCart(c.env.DB, items)
-  const discount = promoDiscount(promo, total)
+  // Скидки не складываются: показываем ту, что победит при оформлении.
+  const tier = tierFor(await spentByUser(c.env.DB, user.id))
+  const { kind, discount } = effectiveDiscount(tier, promo, total)
   return c.json({
     code: promo.code, kind: promo.kind, value: promo.value,
     left: promo.max_uses ? promo.max_uses - promo.used_count : null,
+    applied: kind, tier: kind === 'loyalty' ? tier.name : '',
     subtotal: total, discount, total: total - discount,
   })
 })

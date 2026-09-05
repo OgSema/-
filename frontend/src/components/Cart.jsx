@@ -13,7 +13,7 @@ const savedDelivery = (user) => {
   }
 }
 
-export default function Cart({ cart, products, user, onQty, onDone }) {
+export default function Cart({ cart, products, user, tier, onQty, onDone }) {
   const [sending, setSending] = useState(false)
   const [code, setCode] = useState('')
   const [promo, setPromo] = useState(null)      // подтверждённый сервером код
@@ -25,13 +25,17 @@ export default function Cart({ cart, products, user, onQty, onDone }) {
     .filter((l) => l.product)
 
   const subtotal = lines.reduce((sum, l) => sum + l.product.price * l.qty, 0)
-  // Повторяем формулу сервера, чтобы цифра не устаревала при смене количества.
+  // Повторяем формулы сервера, чтобы цифры не устаревали при смене количества.
   // Решающий расчёт всё равно на сервере — клиент присылает только код.
-  const discount = !promo
+  const byTier = tier ? Math.floor((subtotal * tier.percent) / 100) : 0
+  const byPromo = !promo
     ? 0
     : promo.kind === 'percent'
       ? Math.floor((subtotal * promo.value) / 100)
       : Math.min(promo.value, subtotal)
+  // Скидки не складываются: побеждает большая, при равенстве — уровень.
+  const promoWins = byPromo > byTier
+  const discount = Math.max(byTier, byPromo)
   const total = subtotal - discount
 
   const items = () => lines.map((l) => ({ product_id: l.product.id, qty: l.qty }))
@@ -105,11 +109,19 @@ export default function Cart({ cart, products, user, onQty, onDone }) {
           : <button className="ghost" disabled={checking} onClick={apply}>{checking ? '…' : 'Применить'}</button>}
       </div>
 
-      {promo && (
+      {tier && (
         <p className="promo-ok small">
-          Код {promo.code} применён: −{discount} ₽
+          Уровень <span className={`tier tier-${tier.name.toLowerCase()}`}>{tier.name}</span>
+          {' '}— скидка {tier.percent}%{promoWins ? ' (по коду выгоднее)' : `: −${byTier} ₽`}
+        </p>
+      )}
+
+      {promo && (
+        <p className={promoWins ? 'promo-ok small' : 'muted small'}>
+          Код {promo.code}: −{byPromo} ₽
           {promo.kind === 'percent' && ` (${promo.value}%)`}
           {promo.left !== null && promo.left !== undefined && ` · осталось применений: ${promo.left}`}
+          {!promoWins && ' — скидка уровня выгоднее, код останется у вас'}
         </p>
       )}
 

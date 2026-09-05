@@ -1,6 +1,7 @@
 /** Общая логика каталога и заказов. */
 
 import { HttpError } from './auth.js'
+import { loyaltyDiscount, spentByUser, tierFor } from './loyalty.js'
 
 export const productRow = (row) => ({ ...row, is_active: !!row.is_active })
 
@@ -65,6 +66,18 @@ export const promoDiscount = (promo, total) => {
   return Math.max(0, Math.min(raw, total))
 }
 
+/**
+ * Что реально уменьшит счёт — уровень лояльности или промокод. Скидки не
+ * складываются: берём ту, что выгоднее покупателю. При равенстве побеждает
+ * уровень, тогда код не тратится впустую.
+ */
+export function effectiveDiscount(tier, promo, total) {
+  const byTier = loyaltyDiscount(tier, total)
+  const byPromo = promoDiscount(promo, total)
+  if (byPromo > byTier) return { kind: 'promo', discount: byPromo }
+  return byTier > 0 ? { kind: 'loyalty', discount: byTier } : { kind: 'none', discount: 0 }
+}
+
 /** Пересчитывает корзину по ценам из базы: клиент присылает только id и количество. */
 export async function priceCart(db, requested) {
   if (!requested?.length) throw new HttpError(400, 'Корзина пуста')
@@ -105,17 +118,30 @@ export async function createOrder(env, user, requested, promoCode = '', delivery
 
   // Код проверяем на сервере: клиент присылает только строку.
   const promo = await findPromo(env.DB, promoCode)
-  // Применение занимаем до заказа: если лимит только что выбрали, скидки не будет.
-  const applied = (await claimPromo(env.DB, promo)) ? promo : null
-  const discount = promoDiscount(applied, total)
+  const tier = tierFor(await spentByUser(env.DB, user.id))
+  const byTier = loyaltyDiscount(tier, total)
+  const choice = effectiveDiscount(tier, promo, total)
+
+  // Применение кода занимаем, только если он выигрывает: иначе код не сгорает.
+  // Если лимит выбрали прямо сейчас, откатываемся на скидку уровня.
+  let applied = null
+  let discount = 0
+  if (choice.kind === 'promo' && (await claimPromo(env.DB, promo))) {
+    applied = promo
+    discount = choice.discount
+  } else if (byTier > 0) {
+    discount = byTier
+  }
+  const appliedTier = applied ? null : (byTier > 0 ? tier : null)
 
   const order = await env.DB.prepare(
-    `INSERT INTO orders (tg_user_id, username, customer_name, phone, address, comment, total, discount, promo_code)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+    `INSERT INTO orders (tg_user_id, username, customer_name, phone, address, comment,
+                         total, discount, promo_code, loyalty_tier)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
   ).bind(
     user.id, user.username || '', delivery.name || user.name || '',
     delivery.phone || '', delivery.address || '', delivery.comment || '',
-    total - discount, discount, applied?.code || '',
+    total - discount, discount, applied?.code || '', appliedTier?.name || '',
   ).first()
 
   const writes = await env.DB.batch(lines.flatMap((l) => [

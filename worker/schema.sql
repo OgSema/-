@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS orders (
   total         INTEGER NOT NULL DEFAULT 0,   -- к оплате, уже со скидкой
   discount      INTEGER NOT NULL DEFAULT 0,
   promo_code    TEXT NOT NULL DEFAULT '',
+  loyalty_tier  TEXT NOT NULL DEFAULT '',    -- уровень, если скидку дал он, а не код
   status        TEXT NOT NULL DEFAULT 'new',
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -45,6 +46,8 @@ CREATE TABLE IF NOT EXISTS order_items (
 
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
+-- Профиль и уровень лояльности читают заказы одного покупателя.
+CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(tg_user_id);
 
 -- Рекламная лента на главной: только картинки, порядок задаёт админ.
 CREATE TABLE IF NOT EXISTS banners (

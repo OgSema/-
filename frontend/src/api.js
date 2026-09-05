@@ -37,6 +37,7 @@ async function request(path, { method = 'GET', body, form } = {}) {
 
 export const api = {
   me: () => request('/api/me'),
+  profile: () => request('/api/profile'),
 
   categories: () => request('/api/categories'),
   createCategory: (data) => request('/api/categories', { method: 'POST', body: data }),

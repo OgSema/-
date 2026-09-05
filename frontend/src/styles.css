@@ -250,6 +250,63 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .preview { width: 100%; max-height: 180px; object-fit: cover; border-radius: var(--radius); }
 .sheet-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 
+/* ---------- программа лояльности ---------- */
+
+/* Овал уровня: заливка своим металлом плюс свечение того же цвета вокруг.
+   Цвет несёт смысл, поэтому рядом всегда стоит название и процент. */
+.tier {
+  display: inline-block; padding: 4px 14px; border-radius: 999px;
+  font-size: 12px; font-weight: 700; letter-spacing: .08em;
+  border: 1px solid rgba(255, 255, 255, .35);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 0 14px var(--tier-glow);
+  color: #17120b; background: linear-gradient(180deg, var(--tier-a), var(--tier-b));
+  --tier-a: #cfd6de; --tier-b: #97a2ae; --tier-glow: rgba(205, 215, 230, .45);
+}
+.tier-silver   { --tier-a: #e3e8ee; --tier-b: #9aa5b1; --tier-glow: rgba(205, 215, 230, .5); }
+.tier-gold     { --tier-a: #ffe08a; --tier-b: #e0a326; --tier-glow: rgba(255, 190, 70, .55); }
+.tier-platinum { --tier-a: #f2fbff; --tier-b: #a9c6d6; --tier-glow: rgba(185, 225, 245, .55); }
+.tier-vip      { --tier-a: #dda2ff; --tier-b: #8a4bd8; --tier-glow: rgba(180, 110, 255, .6); color: #fff; }
+.tier-basic {
+  background: var(--glass-2); color: var(--hint);
+  border-color: var(--border); box-shadow: var(--sheen);
+}
+.tier.locked { opacity: .4; box-shadow: var(--sheen); }
+
+.loyalty {
+  background: var(--glass); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--sheen), var(--lift); padding: 14px; margin-bottom: 14px;
+  -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+}
+.loyalty-head { display: flex; align-items: center; gap: 10px; }
+.loyalty p { margin: 8px 0 0; }
+.tier-percent { font-size: 20px; font-weight: 700; }
+.tier-percent.small { font-size: 13px; font-weight: 600; margin-left: auto; }
+
+/* Линия заполняемости: путь до следующего уровня. */
+.tier-bar {
+  height: 8px; margin: 10px 0; border-radius: 999px; overflow: hidden;
+  background: rgba(255, 255, 255, .08); border: 1px solid var(--border);
+}
+.tier-bar span {
+  display: block; height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255, 172, 80, .9), rgba(255, 138, 31, .95));
+  box-shadow: 0 0 12px rgba(255, 138, 31, .5);
+}
+.tier-bar span.done {
+  background: linear-gradient(90deg, rgba(110, 231, 168, .85), rgba(60, 200, 130, .95));
+  box-shadow: 0 0 12px rgba(80, 220, 150, .45);
+}
+.tier-bar.small-bar { height: 5px; margin: 8px 0 0; }
+
+.tier-list { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.tier-list li {
+  background: var(--glass); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--sheen); padding: 10px 12px;
+}
+.tier-row { display: flex; align-items: center; gap: 10px; }
+
+.history-title { margin: 18px 0 8px; font-size: 15px; }
+
 /* ---------- карточка товара ---------- */
 
 .product-sheet .price { font-size: 20px; }
