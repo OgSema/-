@@ -15,11 +15,13 @@ export default function App() {
   const [categories, setCategories] = useState([])
   const [products, setProducts] = useState([])
   const [cart, setCart] = useState({})
+  const [banners, setBanners] = useState([])
 
   const load = useCallback(async () => {
-    const [cats, items] = await Promise.all([api.categories(), api.products()])
+    const [cats, items, ads] = await Promise.all([api.categories(), api.products(), api.banners()])
     setCategories(cats)
     setProducts(items)
+    setBanners(ads.filter((b) => b.is_active))
   }, [])
 
   useEffect(() => {
@@ -54,7 +56,7 @@ export default function App() {
 
       <main className="content">
         {tab === 'catalog' && (
-          <Catalog products={products} categories={categories} cart={cart} onAdd={addToCart} />
+          <Catalog products={products} categories={categories} banners={banners} cart={cart} onAdd={addToCart} />
         )}
         {tab === 'cart' && (
           <Cart

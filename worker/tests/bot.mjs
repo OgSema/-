@@ -8,12 +8,23 @@ import fs from 'node:fs'
 const BASE = process.env.BASE || 'http://localhost:8787'
 const SECRET = process.env.WEBHOOK_SECRET || 'testsecret'
 const LOG = process.env.TG_LOG || '/tmp/tgcalls.jsonl'
-const APP = process.env.MINI_APP_URL || 'https://trydokli.ru'
+// Адрес берём из конфига, иначе тест устаревает при каждой смене домена.
+const APP = process.env.MINI_APP_URL
+  || fs.readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8').match(/MINI_APP_URL\s*=\s*"([^"]+)"/)?.[1]
 const CUSTOMER = { id: 777, first_name: 'Иван', username: 'ivan' }
 
-let seen = 0
+// Журнал общий с tests/api.mjs, поэтому стартуем с текущего конца файла,
+// иначе в выборку попадут чужие вызовы.
+const logLines = () => {
+  try {
+    return fs.readFileSync(LOG, 'utf8').trim().split('\n').filter(Boolean)
+  } catch {
+    return []
+  }
+}
+let seen = logLines().length
 const calls = () => {
-  const all = fs.readFileSync(LOG, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
+  const all = logLines().map((l) => JSON.parse(l))
   const fresh = all.slice(seen)
   seen = all.length
   return fresh

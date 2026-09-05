@@ -56,7 +56,17 @@ export const api = {
     return request('/api/upload', { method: 'POST', form })
   },
 
-  createOrder: (items) => request('/api/orders', { method: 'POST', body: { items } }),
+  banners: () => request('/api/banners'),
+  createBanner: (data) => request('/api/banners', { method: 'POST', body: data }),
+  deleteBanner: (id) => request(`/api/banners/${id}`, { method: 'DELETE' }),
+
+  promos: () => request('/api/promos'),
+  createPromo: (data) => request('/api/promos', { method: 'POST', body: data }),
+  deletePromo: (id) => request(`/api/promos/${id}`, { method: 'DELETE' }),
+  checkPromo: (code, items) => request('/api/promos/check', { method: 'POST', body: { code, items } }),
+
+  createOrder: (items, promo_code = '') =>
+    request('/api/orders', { method: 'POST', body: { items, promo_code } }),
   orders: () => request('/api/orders'),
   setOrderStatus: (id, status) => request(`/api/orders/${id}`, { method: 'PATCH', body: { status } }),
 }

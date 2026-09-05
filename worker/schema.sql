@@ -24,7 +24,9 @@ CREATE TABLE IF NOT EXISTS orders (
   tg_user_id    INTEGER NOT NULL,
   username      TEXT NOT NULL DEFAULT '',
   customer_name TEXT NOT NULL DEFAULT '',
-  total         INTEGER NOT NULL DEFAULT 0,
+  total         INTEGER NOT NULL DEFAULT 0,   -- к оплате, уже со скидкой
+  discount      INTEGER NOT NULL DEFAULT 0,
+  promo_code    TEXT NOT NULL DEFAULT '',
   status        TEXT NOT NULL DEFAULT 'new',
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -40,3 +42,24 @@ CREATE TABLE IF NOT EXISTS order_items (
 
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
+
+-- Рекламная лента на главной: только картинки, порядок задаёт админ.
+CREATE TABLE IF NOT EXISTS banners (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  photo_url  TEXT NOT NULL,
+  sort       INTEGER NOT NULL DEFAULT 0,
+  is_active  INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Промокоды: процент или фиксированная сумма, действуют в интервале дат.
+CREATE TABLE IF NOT EXISTS promos (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  code       TEXT NOT NULL UNIQUE,          -- хранится в верхнем регистре
+  kind       TEXT NOT NULL,                 -- percent | amount
+  value      INTEGER NOT NULL,
+  starts_at  TEXT NOT NULL,                 -- YYYY-MM-DD, включительно
+  ends_at    TEXT NOT NULL,                 -- YYYY-MM-DD, включительно
+  is_active  INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

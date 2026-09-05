@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { HttpError, currentUser, requireAdmin } from './auth.js'
 import { handleUpdate } from './bot/index.js'
 import { adminChat, notifyNewOrder } from './notify.js'
-import { createOrder, listCategories, listProducts, orderItems, productRow } from './shop.js'
+import { createOrder, findPromo, listCategories, listProducts, orderItems, priceCart, productRow, promoDiscount } from './shop.js'
 import { fetchPhoto, uploadPhoto } from './telegram.js'
 
 const app = new Hono()
@@ -121,14 +121,93 @@ app.get('/photo/:fileId', async (c) => {
   return res
 })
 
+// ---------- баннеры ----------
+
+app.get('/api/banners', async (c) => {
+  const user = await currentUser(c)
+  const where = user.is_admin ? '' : 'WHERE is_active = 1'
+  const { results } = await c.env.DB.prepare(`SELECT * FROM banners ${where} ORDER BY sort, id`).all()
+  return c.json(results.map((b) => ({ ...b, is_active: !!b.is_active })))
+})
+
+app.post('/api/banners', async (c) => {
+  await requireAdmin(c)
+  const { photo_url, sort = 0 } = await c.req.json()
+  if (!photo_url) throw new HttpError(400, 'Загрузите картинку')
+  const row = await c.env.DB.prepare('INSERT INTO banners (photo_url, sort) VALUES (?, ?) RETURNING *')
+    .bind(photo_url, Number(sort) || 0).first()
+  return c.json({ ...row, is_active: !!row.is_active })
+})
+
+app.delete('/api/banners/:id', async (c) => {
+  await requireAdmin(c)
+  await c.env.DB.prepare('DELETE FROM banners WHERE id = ?').bind(Number(c.req.param('id'))).run()
+  return c.json({ ok: true })
+})
+
+// ---------- промокоды ----------
+
+const promoRow = (row) => ({ ...row, is_active: !!row.is_active })
+
+app.get('/api/promos', async (c) => {
+  await requireAdmin(c)
+  const { results } = await c.env.DB.prepare('SELECT * FROM promos ORDER BY id DESC').all()
+  return c.json(results.map(promoRow))
+})
+
+app.post('/api/promos', async (c) => {
+  await requireAdmin(c)
+  const { code, kind, value, starts_at, ends_at } = await c.req.json()
+
+  const clean = String(code || '').trim().toUpperCase()
+  if (!/^[A-Z0-9-]{3,32}$/.test(clean)) throw new HttpError(400, 'Код: 3–32 знака, латиница, цифры и дефис')
+  if (kind !== 'percent' && kind !== 'amount') throw new HttpError(400, 'Неизвестный тип скидки')
+
+  const amount = Number(value)
+  if (!Number.isInteger(amount) || amount < 1) throw new HttpError(400, 'Размер скидки должен быть больше нуля')
+  if (kind === 'percent' && amount > 100) throw new HttpError(400, 'Процент не может быть больше 100')
+
+  const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''))
+  if (!isDate(starts_at) || !isDate(ends_at)) throw new HttpError(400, 'Укажите даты начала и окончания')
+  if (ends_at < starts_at) throw new HttpError(400, 'Дата окончания раньше начала')
+
+  try {
+    const row = await c.env.DB.prepare(
+      'INSERT INTO promos (code, kind, value, starts_at, ends_at) VALUES (?, ?, ?, ?, ?) RETURNING *',
+    ).bind(clean, kind, amount, starts_at, ends_at).first()
+    return c.json(promoRow(row))
+  } catch {
+    throw new HttpError(409, 'Такой код уже есть')
+  }
+})
+
+app.delete('/api/promos/:id', async (c) => {
+  await requireAdmin(c)
+  await c.env.DB.prepare('DELETE FROM promos WHERE id = ?').bind(Number(c.req.param('id'))).run()
+  return c.json({ ok: true })
+})
+
+/** Покупатель проверяет код до оформления: сумму считаем по базе, не по корзине клиента. */
+app.post('/api/promos/check', async (c) => {
+  await currentUser(c)
+  const { code, items } = await c.req.json()
+
+  const promo = await findPromo(c.env.DB, code)
+  if (!promo) throw new HttpError(404, 'Код не найден или срок действия истёк')
+
+  const { total } = await priceCart(c.env.DB, items)
+  const discount = promoDiscount(promo, total)
+  return c.json({ code: promo.code, kind: promo.kind, value: promo.value, subtotal: total, discount, total: total - discount })
+})
+
 // ---------- заказы ----------
 
 const withItems = async (db, order) => ({ ...order, items: await orderItems(db, order.id) })
 
 app.post('/api/orders', async (c) => {
   const user = await currentUser(c)
-  const { items } = await c.req.json()
-  const order = await createOrder(c.env, user, items)
+  const { items, promo_code = '' } = await c.req.json()
+  const order = await createOrder(c.env, user, items, promo_code)
   return c.json({ ...order, ...(await notifyNewOrder(c.env, order)) })
 })
 

@@ -25,7 +25,29 @@ export const orderItems = async (db, orderId) =>
  * Создаёт заказ: цены берутся из базы, остаток списывается условием stock >= qty,
  * поэтому две одновременные покупки последней пачки не уведут склад в минус.
  */
-export async function createOrder(env, user, requested) {
+// ---------- промокоды ----------
+
+/** Действующий код или null. Регистр не важен, интервал дат включительный. */
+export const findPromo = async (db, code) => {
+  const clean = String(code || '').trim().toUpperCase()
+  if (!clean) return null
+  return db.prepare(
+    `SELECT * FROM promos WHERE code = ? AND is_active = 1
+       AND date('now') BETWEEN starts_at AND ends_at`,
+  ).bind(clean).first()
+}
+
+/** Скидка в рублях. Больше суммы заказа не бывает, в минус не уводит. */
+export const promoDiscount = (promo, total) => {
+  if (!promo) return 0
+  const raw = promo.kind === 'percent'
+    ? Math.floor((total * promo.value) / 100)
+    : promo.value
+  return Math.max(0, Math.min(raw, total))
+}
+
+/** Пересчитывает корзину по ценам из базы: клиент присылает только id и количество. */
+export async function priceCart(db, requested) {
   if (!requested?.length) throw new HttpError(400, 'Корзина пуста')
 
   const lines = []
@@ -34,17 +56,27 @@ export async function createOrder(env, user, requested) {
     const qty = Number(line.qty)
     if (!Number.isInteger(qty) || qty < 1) throw new HttpError(400, 'Некорректное количество')
 
-    const row = await getProduct(env.DB, line.product_id)
+    const row = await getProduct(db, line.product_id)
     if (!row || !row.is_active) throw new HttpError(400, `Товар ${line.product_id} недоступен`)
     if (row.stock < qty) throw new HttpError(409, `«${row.name}»: осталось ${row.stock} шт.`)
 
     lines.push({ product_id: row.id, name: row.name, price: row.price, qty })
     total += row.price * qty
   }
+  return { lines, total }
+}
+
+export async function createOrder(env, user, requested, promoCode = '') {
+  const { lines, total } = await priceCart(env.DB, requested)
+
+  // Код проверяем на сервере: клиент присылает только строку.
+  const promo = await findPromo(env.DB, promoCode)
+  const discount = promoDiscount(promo, total)
 
   const order = await env.DB.prepare(
-    'INSERT INTO orders (tg_user_id, username, customer_name, total) VALUES (?, ?, ?, ?) RETURNING *',
-  ).bind(user.id, user.username || '', user.name || '', total).first()
+    `INSERT INTO orders (tg_user_id, username, customer_name, total, discount, promo_code)
+     VALUES (?, ?, ?, ?, ?, ?) RETURNING *`,
+  ).bind(user.id, user.username || '', user.name || '', total - discount, discount, promo?.code || '').first()
 
   const writes = await env.DB.batch(lines.flatMap((l) => [
     env.DB.prepare('UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?')
@@ -62,5 +94,5 @@ export async function createOrder(env, user, requested) {
     throw new HttpError(409, 'Товар разобрали, пока вы оформляли заказ')
   }
 
-  return { ...order, items: lines }
+  return { ...order, items: lines, subtotal: total }
 }

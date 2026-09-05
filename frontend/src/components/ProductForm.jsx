@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api'
 import { showAlert } from '../tg'
+import Cropper from './Cropper'
 
 const EMPTY = {
   name: '', brand: '', flavor: '', weight: '', price: 0,
@@ -10,6 +11,7 @@ const EMPTY = {
 export default function ProductForm({ product, categories, onClose, onSaved }) {
   const [form, setForm] = useState({ ...EMPTY, ...product })
   const [busy, setBusy] = useState(false)
+  const [cropping, setCropping] = useState(null)   // файл, ожидающий кадрирования
 
   const set = (field) => (e) => {
     const el = e.target
@@ -17,9 +19,15 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
     setForm((f) => ({ ...f, [field]: value }))
   }
 
-  const uploadPhoto = async (e) => {
+  // Сначала кадрируем, грузим уже обрезанное — так карточки в каталоге ровные.
+  const pickPhoto = (e) => {
     const file = e.target.files?.[0]
-    if (!file) return
+    if (file) setCropping(file)
+    e.target.value = ''
+  }
+
+  const uploadCropped = async (file) => {
+    setCropping(null)
     setBusy(true)
     try {
       const { url } = await api.upload(file)
@@ -95,7 +103,7 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
 
         <label className="photo">
           Фото
-          <input type="file" accept="image/*" onChange={uploadPhoto} />
+          <input type="file" accept="image/*" onChange={pickPhoto} />
         </label>
         {form.photo_url && <img className="preview" src={form.photo_url} alt="" />}
 
@@ -112,6 +120,16 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
           </button>
         </div>
       </div>
+
+      {cropping && (
+        <Cropper
+          file={cropping}
+          aspect={1}
+          outWidth={900}
+          onCancel={() => setCropping(null)}
+          onDone={uploadCropped}
+        />
+      )}
     </div>
   )
 }

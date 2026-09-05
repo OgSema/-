@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { haptic } from '../tg'
 
-export default function Catalog({ products, categories, cart, onAdd }) {
+export default function Catalog({ products, categories, banners = [], cart, onAdd }) {
   const [categoryId, setCategoryId] = useState(null)
   const [query, setQuery] = useState('')
 
@@ -16,6 +16,14 @@ export default function Catalog({ products, categories, cart, onAdd }) {
 
   return (
     <>
+      {banners.length > 0 && (
+        <div className="banners">
+          {banners.map((b) => (
+            <img key={b.id} className="banner" src={b.photo_url} alt="" loading="lazy" />
+          ))}
+        </div>
+      )}
+
       <input
         className="search"
         placeholder="Поиск по названию или вкусу"

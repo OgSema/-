@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { showAlert } from '../tg'
 import ProductForm from './ProductForm'
+import Cropper from './Cropper'
 
 const STATUS = { new: 'новый', confirmed: 'подтверждён', done: 'выдан', canceled: 'отменён' }
 
@@ -12,7 +13,8 @@ export default function Admin({ categories, products, onChange }) {
   return (
     <>
       <div className="chips">
-        {[['products', 'Товары'], ['orders', 'Заказы'], ['categories', 'Категории']].map(([key, label]) => (
+        {[['products', 'Товары'], ['orders', 'Заказы'], ['categories', 'Категории'],
+          ['banners', 'Баннеры'], ['promos', 'Промокоды']].map(([key, label]) => (
           <button key={key} className={section === key ? 'chip active' : 'chip'} onClick={() => setSection(key)}>
             {label}
           </button>
@@ -41,6 +43,8 @@ export default function Admin({ categories, products, onChange }) {
 
       {section === 'orders' && <Orders />}
       {section === 'categories' && <Categories categories={categories} onChange={onChange} />}
+      {section === 'banners' && <Banners onChange={onChange} />}
+      {section === 'promos' && <Promos />}
 
       {editing && (
         <ProductForm
@@ -136,6 +140,151 @@ function Categories({ categories, onChange }) {
           <li key={c.id}>
             <div className="cart-info"><strong>{c.name}</strong></div>
             <button className="ghost danger" onClick={() => remove(c.id)}>Удалить</button>
+          </li>
+        ))}
+      </ul>
+    </>
+  )
+}
+
+/** Реклама на главной: широкие картинки, порядок — по полю sort. */
+function Banners({ onChange }) {
+  const [list, setList] = useState([])
+  const [cropping, setCropping] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const load = () => api.banners().then(setList).catch((e) => showAlert(e.message))
+  useEffect(() => { load() }, [])
+
+  const pick = (e) => {
+    const file = e.target.files?.[0]
+    if (file) setCropping(file)
+    e.target.value = ''
+  }
+
+  const add = async (file) => {
+    setCropping(null)
+    setBusy(true)
+    try {
+      const { url } = await api.upload(file)
+      await api.createBanner({ photo_url: url, sort: list.length })
+      load()
+      onChange()
+    } catch (e) {
+      showAlert(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const remove = async (id) => {
+    try {
+      await api.deleteBanner(id)
+      load()
+      onChange()
+    } catch (e) {
+      showAlert(e.message)
+    }
+  }
+
+  return (
+    <>
+      <label className="photo">
+        {busy ? 'Загружаем…' : '+ Добавить баннер'}
+        <input type="file" accept="image/*" disabled={busy} onChange={pick} />
+      </label>
+
+      {list.length === 0 && <p className="muted center">Баннеров пока нет</p>}
+
+      <ul className="admin-list">
+        {list.map((b) => (
+          <li key={b.id} className="banner-row">
+            <img src={b.photo_url} alt="" />
+            <button className="ghost danger" onClick={() => remove(b.id)}>Удалить</button>
+          </li>
+        ))}
+      </ul>
+
+      {cropping && (
+        <Cropper file={cropping} aspect={16 / 9} outWidth={1200}
+          onCancel={() => setCropping(null)} onDone={add} />
+      )}
+    </>
+  )
+}
+
+const today = () => new Date().toISOString().slice(0, 10)
+const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10)
+
+function Promos() {
+  const [list, setList] = useState([])
+  const [form, setForm] = useState({ code: '', kind: 'percent', value: 10, starts_at: today(), ends_at: inDays(30) })
+  const [busy, setBusy] = useState(false)
+
+  const load = () => api.promos().then(setList).catch((e) => showAlert(e.message))
+  useEffect(() => { load() }, [])
+
+  const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }))
+
+  const add = async () => {
+    setBusy(true)
+    try {
+      await api.createPromo({ ...form, value: Number(form.value) })
+      setForm((f) => ({ ...f, code: '' }))
+      load()
+    } catch (e) {
+      showAlert(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const remove = async (id) => {
+    try {
+      await api.deletePromo(id)
+      load()
+    } catch (e) {
+      showAlert(e.message)
+    }
+  }
+
+  const expired = (p) => p.ends_at < today()
+
+  return (
+    <>
+      <label>Код<input value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="LETO10" /></label>
+      <div className="row">
+        <label>
+          Тип
+          <select value={form.kind} onChange={set('kind')}>
+            <option value="percent">процент</option>
+            <option value="amount">рубли</option>
+          </select>
+        </label>
+        <label>
+          {form.kind === 'percent' ? 'Скидка, %' : 'Скидка, ₽'}
+          <input type="number" inputMode="numeric" value={form.value} onChange={set('value')} />
+        </label>
+      </div>
+      <div className="row">
+        <label>С<input type="date" value={form.starts_at} onChange={set('starts_at')} /></label>
+        <label>По<input type="date" value={form.ends_at} onChange={set('ends_at')} /></label>
+      </div>
+      <button className="primary" disabled={busy} onClick={add}>{busy ? '…' : 'Создать код'}</button>
+
+      {list.length === 0 && <p className="muted center">Промокодов пока нет</p>}
+
+      <ul className="admin-list">
+        {list.map((p) => (
+          <li key={p.id}>
+            <div className="cart-info">
+              <strong>{p.code}</strong>
+              <span className="muted small">
+                {p.kind === 'percent' ? `${p.value}%` : `${p.value} ₽`} · {p.starts_at} — {p.ends_at}
+                {expired(p) && ' · истёк'}
+              </span>
+            </div>
+            <button className="ghost danger" onClick={() => remove(p.id)}>Удалить</button>
           </li>
         ))}
       </ul>
