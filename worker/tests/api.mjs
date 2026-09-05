@@ -51,14 +51,8 @@ const visible = (await (await call('/api/products', CUSTOMER)).json()).map((p) =
 check('товар без остатка скрыт от покупателя', !visible.includes(hidden.id) && visible.includes(created.id))
 
 // 3. Заказ
-const DELIVERY = { name: 'Иван', phone: '+79991234567', address: 'Москва, Тверская 1, кв. 5', comment: 'домофон 15' }
-
-check('заказ без телефона отклонён', (await call('/api/orders', CUSTOMER, {
-  method: 'POST', body: JSON.stringify({ items: [{ product_id: created.id, qty: 1 }], ...DELIVERY, phone: '' }),
-})).status === 400)
-check('заказ без адреса отклонён', (await call('/api/orders', CUSTOMER, {
-  method: 'POST', body: JSON.stringify({ items: [{ product_id: created.id, qty: 1 }], ...DELIVERY, address: '' }),
-})).status === 400)
+// Имя в форме нарочно отличается от имени в initData («Иван»).
+const DELIVERY = { name: 'Пётр', comment: 'после 18:00' }
 
 const orderRes = await call('/api/orders', CUSTOMER, {
   method: 'POST', username: 'ivan', body: JSON.stringify({ items: [{ product_id: created.id, qty: 2 }], ...DELIVERY }),
@@ -67,9 +61,9 @@ const order = await orderRes.json()
 check('заказ создан', orderRes.status === 200, JSON.stringify(order).slice(0, 120))
 check('сумма посчитана по базе', order.total === 2400, String(order.total))
 check('состав заказа сохранён', order.items?.length === 1)
-check('контакты и адрес сохранены',
-  order.phone === DELIVERY.phone && order.address === DELIVERY.address && order.comment === DELIVERY.comment,
-  `${order.phone} / ${order.address}`)
+check('имя и комментарий сохранены',
+  order.customer_name === DELIVERY.name && order.comment === DELIVERY.comment,
+  `${order.customer_name} / ${order.comment}`)
 
 const again = await call('/api/orders', CUSTOMER, {
   method: 'POST', body: JSON.stringify({ items: [{ product_id: created.id, qty: 1 }], ...DELIVERY }),
@@ -224,6 +218,11 @@ const strongOrder = await (await buy(1, strong.code)).json()
 check('сильный код выигрывает у уровня',
   strongOrder.discount === 200 && strongOrder.promo_code === strong.code && strongOrder.loyalty_tier === '',
   `скидка ${strongOrder.discount}`)
+
+const noName = await (await call('/api/orders', LOYAL, {
+  method: 'POST', body: JSON.stringify({ items: [{ product_id: loyaltyItem.id, qty: 1 }] }),
+})).json()
+check('без имени в форме берётся имя из Telegram', noName.customer_name === 'Иван', noName.customer_name)
 
 const preview = await (await call('/api/promos/check', LOYAL, {
   method: 'POST', body: JSON.stringify({ code: weak.code, items: [{ product_id: loyaltyItem.id, qty: 1 }] }),

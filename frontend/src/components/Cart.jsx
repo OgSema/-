@@ -2,12 +2,13 @@ import { useState } from 'react'
 import { api } from '../api'
 import { haptic, showAlert } from '../tg'
 
-const EMPTY_DELIVERY = { name: '', phone: '', address: '', comment: '' }
+const EMPTY_DELIVERY = { name: '', comment: '' }
 
-/** Контакты не меняются от заказа к заказу — незачем набирать их каждый раз. */
+/** Имя не меняется от заказа к заказу — незачем набирать его каждый раз. */
 const savedDelivery = (user) => {
   try {
-    return { ...EMPTY_DELIVERY, name: user?.name || '', ...JSON.parse(localStorage.getItem('delivery') || '{}') }
+    const saved = JSON.parse(localStorage.getItem('delivery') || '{}')
+    return { ...EMPTY_DELIVERY, name: saved.name || user?.name || '' }
   } catch {
     return { ...EMPTY_DELIVERY, name: user?.name || '' }
   }
@@ -65,7 +66,7 @@ export default function Cart({ cart, products, user, tier, onQty, onDone }) {
     try {
       await api.createOrder(items(), promo?.code || '', delivery)
       try {
-        localStorage.setItem('delivery', JSON.stringify(delivery))
+        localStorage.setItem('delivery', JSON.stringify({ name: delivery.name }))
       } catch { /* приватный режим — просто не запомним */ }
       haptic('medium')
       showAlert('Заказ отправлен. Подробности — в чате с ботом.')
@@ -126,16 +127,11 @@ export default function Cart({ cart, products, user, tier, onQty, onDone }) {
       )}
 
       <section className="delivery">
-        <h3>Доставка</h3>
+        <h3>Ваши данные</h3>
         <label>Имя<input value={delivery.name} onChange={set('name')} placeholder="Как к вам обращаться" /></label>
         <label>
-          Телефон или контакт
-          <input type="tel" inputMode="tel" value={delivery.phone} onChange={set('phone')} placeholder="+7 999 123-45-67" />
-        </label>
-        <label>Адрес<input value={delivery.address} onChange={set('address')} placeholder="Улица, дом, квартира" /></label>
-        <label>
-          Комментарий
-          <textarea rows="2" value={delivery.comment} onChange={set('comment')} placeholder="Домофон, время, пожелания" />
+          Комментарий <span className="muted">(необязательно)</span>
+          <textarea rows="2" value={delivery.comment} onChange={set('comment')} placeholder="Пожелания к заказу" />
         </label>
       </section>
 

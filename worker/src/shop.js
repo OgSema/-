@@ -98,18 +98,15 @@ export async function priceCart(db, requested) {
   return { lines, total }
 }
 
-/** Контакты и адрес: без них заказ везти некуда. */
+/**
+ * Что покупатель добавляет к заказу. Телефон и адрес не спрашиваем — детали
+ * доставки обсуждаются в чате, ссылка на покупателя уходит админу вместе с
+ * заказом. Колонки phone и address остаются ради старых заказов.
+ */
 export function deliveryFields(body) {
   const trim = (v, limit) => String(v ?? '').trim().slice(0, limit)
-  const delivery = {
-    name: trim(body.name, 100),
-    phone: trim(body.phone, 60),
-    address: trim(body.address, 300),
-    comment: trim(body.comment, 500),
-  }
+  const delivery = { name: trim(body.name, 100), comment: trim(body.comment, 500) }
   if (!delivery.name) throw new HttpError(400, 'Укажите имя')
-  if (delivery.phone.length < 5) throw new HttpError(400, 'Укажите телефон или другой способ связи')
-  if (delivery.address.length < 5) throw new HttpError(400, 'Укажите адрес доставки')
   return delivery
 }
 
