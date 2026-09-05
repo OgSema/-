@@ -1,6 +1,13 @@
 name = "moscowtab"
 main = "src/index.js"
 compatibility_date = "2025-01-01"
+workers_dev = true
+preview_urls = true
+
+# Свой домен: зона trydokli.ru делегирована на Cloudflare.
+routes = [
+  { pattern = "trydokli.ru", custom_domain = true }
+]
 
 # Собранный React отдаётся тем же воркером: один домен, никакого CORS.
 [assets]
