@@ -1,16 +1,29 @@
 const BASE = import.meta.env.VITE_API_URL || ''
 const initData = window.Telegram?.WebApp?.initData || ''
 
+// Без таймаута зависший запрос оставляет пустой экран без объяснений:
+// у части операторов домен просто не отвечает, и молчать об этом нельзя.
+const TIMEOUT = 12000
+const UNREACHABLE =
+  'Не удалось связаться с сервером.\n\nПроверьте интернет, а если включён VPN — попробуйте его отключить.'
+
 async function request(path, { method = 'GET', body, form } = {}) {
   const headers = {}
   if (initData) headers.Authorization = `tma ${initData}`
   if (body) headers['Content-Type'] = 'application/json'
 
-  const res = await fetch(BASE + path, {
-    method,
-    headers,
-    body: form ?? (body ? JSON.stringify(body) : undefined),
-  })
+  let res
+  const stop = AbortSignal.timeout ? AbortSignal.timeout(TIMEOUT) : undefined
+  try {
+    res = await fetch(BASE + path, {
+      method,
+      headers,
+      signal: stop,
+      body: form ?? (body ? JSON.stringify(body) : undefined),
+    })
+  } catch {
+    throw new Error(UNREACHABLE)
+  }
 
   if (!res.ok) {
     let detail = `Ошибка ${res.status}`
