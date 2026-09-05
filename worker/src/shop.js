@@ -1,4 +1,4 @@
-/** Общая логика каталога и заказов: ею пользуются и Mini App, и бот в чате. */
+/** Общая логика каталога и заказов. */
 
 import { HttpError } from './auth.js'
 
@@ -64,17 +64,3 @@ export async function createOrder(env, user, requested) {
 
   return { ...order, items: lines }
 }
-
-// ---------- состояние диалога с ботом ----------
-
-export async function getSession(db, userId) {
-  const row = await db.prepare('SELECT state, cart FROM sessions WHERE user_id = ?').bind(userId).first()
-  const parse = (s, fallback) => { try { return JSON.parse(s) } catch { return fallback } }
-  return { state: parse(row?.state, {}), cart: parse(row?.cart, {}) }
-}
-
-export const saveSession = (db, userId, { state = {}, cart = {} }) =>
-  db.prepare(
-    `INSERT INTO sessions (user_id, state, cart, updated_at) VALUES (?, ?, ?, datetime('now'))
-     ON CONFLICT(user_id) DO UPDATE SET state = excluded.state, cart = excluded.cart, updated_at = excluded.updated_at`,
-  ).bind(userId, JSON.stringify(state), JSON.stringify(cart)).run()
