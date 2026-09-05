@@ -7,8 +7,25 @@
   --link: #ffb347;
   --button: #ff8a1f;         /* акцент */
   --button-text: #17120b;
-  --border: rgba(255, 255, 255, .09);
-  --radius: 14px;
+  --border: rgba(255, 255, 255, .16);
+  --radius: 16px;
+
+  /* Жидкое стекло: полупрозрачная подложка + размытие того, что под ней.
+     Блик сверху и тонкая светлая рамка дают ощущение толщины. */
+  --glass: rgba(255, 255, 255, .06);
+  --glass-2: rgba(255, 255, 255, .10);
+  --blur: blur(22px) saturate(170%);
+  --sheen: inset 0 1px 0 rgba(255, 255, 255, .18);
+  --lift: 0 8px 26px rgba(0, 0, 0, .38);
+}
+
+/* Стеклянная поверхность. Мелкие кнопки внутри карточек размытия не получают:
+   вложенный backdrop-filter дорого стоит и подтормаживает прокрутку. */
+.card, .chip, .ghost, .primary, .cart li, .admin-list li,
+.tabbar, .sheet, .search,
+.row input, .sheet input, .sheet select, .sheet textarea {
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
 }
 
 * { box-sizing: border-box; }
@@ -18,6 +35,24 @@ body {
   background: var(--secondary-bg);
   color: var(--text);
   font: 15px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, sans-serif;
+}
+
+/* Фон отдельным фиксированным слоем: background-attachment: fixed на iOS
+   дёргается при прокрутке, а псевдоэлемент стоит намертво. */
+body::before, body::after { content: ''; position: fixed; inset: 0; pointer-events: none; }
+body::before {
+  z-index: -2;
+  background: url('/bg.jpg') center / cover no-repeat var(--secondary-bg);
+}
+/* Затемнение: без него текст теряется на светлых участках снега. */
+body::after {
+  z-index: -1;
+  background: linear-gradient(
+    180deg,
+    rgba(8, 8, 11, .38) 0%,
+    rgba(8, 8, 11, .60) 42%,
+    rgba(8, 8, 11, .88) 100%
+  );
 }
 
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -66,27 +101,33 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .search, .row input, .sheet input, .sheet select, .sheet textarea {
   width: 100%; padding: 11px 12px; margin: 6px 0;
-  background: var(--bg); color: var(--text);
+  background: var(--glass); color: var(--text);
   border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--sheen);
 }
 
 .chips { display: flex; gap: 8px; overflow-x: auto; padding: 8px 0 12px; scrollbar-width: none; }
 .chips::-webkit-scrollbar { display: none; }
 .chip {
   white-space: nowrap; padding: 7px 14px; border-radius: 999px;
-  border: 1px solid var(--border); background: var(--bg); cursor: pointer;
+  border: 1px solid var(--border); background: var(--glass); cursor: pointer;
+  box-shadow: var(--sheen);
 }
-.chip.active { background: var(--button); color: var(--button-text); border-color: transparent; }
+.chip.active {
+  background: linear-gradient(180deg, rgba(255, 168, 74, .92), rgba(255, 138, 31, .82));
+  color: var(--button-text); border-color: rgba(255, 200, 140, .5);
+}
 
 .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 .card {
-  background: var(--bg); border-radius: var(--radius); overflow: hidden;
+  background: var(--glass); border-radius: var(--radius); overflow: hidden;
   display: flex; flex-direction: column;
+  border: 1px solid var(--border); box-shadow: var(--sheen), var(--lift);
 }
 .card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
 .no-photo {
   aspect-ratio: 1; display: grid; place-items: center;
-  background: #202027; color: var(--hint); font-size: 12px;
+  background: rgba(255, 255, 255, .04); color: var(--hint); font-size: 12px;
 }
 .card-body { padding: 10px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
 .card-body h3 { margin: 0; font-size: 14px; font-weight: 600; }
@@ -95,22 +136,27 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .left { margin: 0; font-size: 11px; color: #ffb347; }
 
 .add {
-  border: none; border-radius: 999px; padding: 7px 11px; flex-shrink: 0;
-  background: var(--button); color: var(--button-text);
+  border: 1px solid rgba(255, 200, 140, .45); border-radius: 999px;
+  padding: 7px 11px; flex-shrink: 0;
+  background: linear-gradient(180deg, rgba(255, 168, 74, .92), rgba(255, 138, 31, .8));
+  color: var(--button-text); box-shadow: var(--sheen);
   cursor: pointer; font-size: 12px; white-space: nowrap;
 }
 .add:disabled { opacity: .45; }
 
 .primary {
   width: 100%; padding: 13px; margin: 8px 0;
-  border: none; border-radius: var(--radius);
-  background: var(--button); color: var(--button-text); font-weight: 600; cursor: pointer;
+  border: 1px solid rgba(255, 200, 140, .45); border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255, 172, 80, .94), rgba(255, 138, 31, .82));
+  color: var(--button-text); font-weight: 600; cursor: pointer;
+  box-shadow: var(--sheen), 0 6px 20px rgba(255, 138, 31, .22);
 }
 .primary.narrow { width: auto; padding: 10px 18px; }
 .primary:disabled { opacity: .6; }
 .ghost {
-  padding: 8px 12px; border-radius: 10px; text-decoration: none;
-  border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; font-size: 13px;
+  padding: 8px 12px; border-radius: 12px; text-decoration: none;
+  border: 1px solid var(--border); background: var(--glass); color: var(--text);
+  box-shadow: var(--sheen); cursor: pointer; font-size: 13px;
 }
 .ghost.danger { color: #ff7a7a; }
 .link { background: none; border: none; color: var(--link); cursor: pointer; }
@@ -118,7 +164,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .cart, .admin-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .cart li, .admin-list li {
   display: flex; align-items: center; gap: 10px;
-  background: var(--bg); border-radius: var(--radius); padding: 10px 12px;
+  background: var(--glass); border-radius: var(--radius); padding: 10px 12px;
+  border: 1px solid var(--border); box-shadow: var(--sheen);
 }
 .cart-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .cart-info strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -128,7 +175,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .stepper { display: flex; align-items: center; gap: 10px; }
 .stepper button {
   width: 30px; height: 30px; border-radius: 50%;
-  border: 1px solid var(--border); background: var(--bg); cursor: pointer;
+  border: 1px solid var(--border); background: var(--glass-2);
+  box-shadow: var(--sheen); cursor: pointer;
 }
 .stepper button:disabled { opacity: .4; }
 
@@ -136,7 +184,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .orders li { flex-direction: column; align-items: stretch; gap: 6px; }
 .order-head { display: flex; justify-content: space-between; align-items: center; }
-.status { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--secondary-bg); }
+.status { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: rgba(255, 255, 255, .08); }
 .status.new { background: rgba(90, 160, 255, .18); color: #7ab3ff; }
 .status.confirmed { background: rgba(255, 176, 32, .18); color: #ffc45c; }
 .status.done { background: rgba(70, 200, 110, .18); color: #6fd894; }
@@ -150,7 +198,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0;
-  display: flex; background: var(--bg); border-top: 1px solid var(--border);
+  display: flex; background: rgba(20, 20, 24, .55);
+  border-top: 1px solid var(--border); box-shadow: var(--sheen);
   padding-bottom: env(safe-area-inset-bottom);
 }
 .tabbar button {
@@ -164,12 +213,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 .sheet-backdrop {
-  position: fixed; inset: 0; background: rgba(0, 0, 0, .65);
+  position: fixed; inset: 0; background: rgba(0, 0, 0, .5);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   display: flex; align-items: flex-end; z-index: 10;
 }
 .sheet {
   width: 100%; max-height: 92vh; overflow-y: auto;
-  background: var(--secondary-bg); border-radius: 18px 18px 0 0; padding: 18px 16px 24px;
+  background: rgba(22, 22, 27, .72); border-radius: 20px 20px 0 0;
+  border-top: 1px solid var(--border); box-shadow: var(--sheen);
+  padding: 18px 16px 24px;
 }
 .sheet h2 { margin: 0 0 12px; font-size: 18px; }
 .sheet label { display: block; font-size: 13px; color: var(--hint); }
@@ -192,7 +244,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .banners::-webkit-scrollbar { display: none; }
 .banner {
   flex: 0 0 88%; aspect-ratio: 16 / 9; object-fit: cover;
-  border-radius: 14px; scroll-snap-align: center;
+  border-radius: var(--radius); scroll-snap-align: center;
+  border: 1px solid var(--border); box-shadow: var(--lift);
 }
 
 .banner-row img { width: 92px; height: 52px; object-fit: cover; border-radius: 8px; }
