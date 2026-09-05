@@ -27,15 +27,34 @@ export const orderItems = async (db, orderId) =>
  */
 // ---------- промокоды ----------
 
-/** Действующий код или null. Регистр не важен, интервал дат включительный. */
+/**
+ * Действующий код или null. Регистр не важен, интервал дат включительный,
+ * исчерпанный лимит применений исключает код так же, как истёкший срок.
+ */
 export const findPromo = async (db, code) => {
   const clean = String(code || '').trim().toUpperCase()
   if (!clean) return null
   return db.prepare(
     `SELECT * FROM promos WHERE code = ? AND is_active = 1
-       AND date('now') BETWEEN starts_at AND ends_at`,
+       AND date('now') BETWEEN starts_at AND ends_at
+       AND (max_uses = 0 OR used_count < max_uses)`,
   ).bind(clean).first()
 }
+
+/**
+ * Занимает одно применение кода. Условие max_uses повторяется в UPDATE, поэтому
+ * два одновременных заказа не уведут счётчик за лимит: второму придёт 0 строк.
+ */
+const claimPromo = async (db, promo) => {
+  if (!promo) return false
+  const res = await db.prepare(
+    'UPDATE promos SET used_count = used_count + 1 WHERE id = ? AND (max_uses = 0 OR used_count < max_uses)',
+  ).bind(promo.id).run()
+  return res.meta.changes > 0
+}
+
+const releasePromo = (db, promo) =>
+  db.prepare('UPDATE promos SET used_count = used_count - 1 WHERE id = ? AND used_count > 0').bind(promo.id).run()
 
 /** Скидка в рублях. Больше суммы заказа не бывает, в минус не уводит. */
 export const promoDiscount = (promo, total) => {
@@ -66,17 +85,38 @@ export async function priceCart(db, requested) {
   return { lines, total }
 }
 
-export async function createOrder(env, user, requested, promoCode = '') {
+/** Контакты и адрес: без них заказ везти некуда. */
+export function deliveryFields(body) {
+  const trim = (v, limit) => String(v ?? '').trim().slice(0, limit)
+  const delivery = {
+    name: trim(body.name, 100),
+    phone: trim(body.phone, 60),
+    address: trim(body.address, 300),
+    comment: trim(body.comment, 500),
+  }
+  if (!delivery.name) throw new HttpError(400, 'Укажите имя')
+  if (delivery.phone.length < 5) throw new HttpError(400, 'Укажите телефон или другой способ связи')
+  if (delivery.address.length < 5) throw new HttpError(400, 'Укажите адрес доставки')
+  return delivery
+}
+
+export async function createOrder(env, user, requested, promoCode = '', delivery = {}) {
   const { lines, total } = await priceCart(env.DB, requested)
 
   // Код проверяем на сервере: клиент присылает только строку.
   const promo = await findPromo(env.DB, promoCode)
-  const discount = promoDiscount(promo, total)
+  // Применение занимаем до заказа: если лимит только что выбрали, скидки не будет.
+  const applied = (await claimPromo(env.DB, promo)) ? promo : null
+  const discount = promoDiscount(applied, total)
 
   const order = await env.DB.prepare(
-    `INSERT INTO orders (tg_user_id, username, customer_name, total, discount, promo_code)
-     VALUES (?, ?, ?, ?, ?, ?) RETURNING *`,
-  ).bind(user.id, user.username || '', user.name || '', total - discount, discount, promo?.code || '').first()
+    `INSERT INTO orders (tg_user_id, username, customer_name, phone, address, comment, total, discount, promo_code)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+  ).bind(
+    user.id, user.username || '', delivery.name || user.name || '',
+    delivery.phone || '', delivery.address || '', delivery.comment || '',
+    total - discount, discount, applied?.code || '',
+  ).first()
 
   const writes = await env.DB.batch(lines.flatMap((l) => [
     env.DB.prepare('UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?')
@@ -91,6 +131,7 @@ export async function createOrder(env, user, requested, promoCode = '') {
       env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(order.id),
       env.DB.prepare('DELETE FROM orders WHERE id = ?').bind(order.id),
     ])
+    if (applied) await releasePromo(env.DB, applied)
     throw new HttpError(409, 'Товар разобрали, пока вы оформляли заказ')
   }
 

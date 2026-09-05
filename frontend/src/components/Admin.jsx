@@ -86,6 +86,13 @@ function Orders() {
           <p className="muted small">
             {o.customer_name}{o.username && ` · @${o.username}`} · id {o.tg_user_id}
           </p>
+          {(o.phone || o.address || o.comment) && (
+            <p className="small delivery-info">
+              {o.phone && <>{o.phone}<br /></>}
+              {o.address && <>{o.address}<br /></>}
+              {o.comment && <span className="muted">{o.comment}</span>}
+            </p>
+          )}
           <ul className="order-items">
             {o.items.map((i, idx) => <li key={idx}>{i.name} — {i.qty} × {i.price} ₽</li>)}
           </ul>
@@ -218,7 +225,9 @@ const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0,
 
 function Promos() {
   const [list, setList] = useState([])
-  const [form, setForm] = useState({ code: '', kind: 'percent', value: 10, starts_at: today(), ends_at: inDays(30) })
+  const [form, setForm] = useState({
+    code: '', kind: 'percent', value: 10, starts_at: today(), ends_at: inDays(30), max_uses: 0,
+  })
   const [busy, setBusy] = useState(false)
 
   const load = () => api.promos().then(setList).catch((e) => showAlert(e.message))
@@ -229,7 +238,7 @@ function Promos() {
   const add = async () => {
     setBusy(true)
     try {
-      await api.createPromo({ ...form, value: Number(form.value) })
+      await api.createPromo({ ...form, value: Number(form.value), max_uses: Number(form.max_uses) || 0 })
       setForm((f) => ({ ...f, code: '' }))
       load()
     } catch (e) {
@@ -270,6 +279,10 @@ function Promos() {
         <label>С<input type="date" value={form.starts_at} onChange={set('starts_at')} /></label>
         <label>По<input type="date" value={form.ends_at} onChange={set('ends_at')} /></label>
       </div>
+      <label>
+        Лимит применений <span className="muted">(0 — без ограничения)</span>
+        <input type="number" inputMode="numeric" min="0" value={form.max_uses} onChange={set('max_uses')} />
+      </label>
       <button className="primary" disabled={busy} onClick={add}>{busy ? '…' : 'Создать код'}</button>
 
       {list.length === 0 && <p className="muted center">Промокодов пока нет</p>}
@@ -281,7 +294,11 @@ function Promos() {
               <strong>{p.code}</strong>
               <span className="muted small">
                 {p.kind === 'percent' ? `${p.value}%` : `${p.value} ₽`} · {p.starts_at} — {p.ends_at}
+                {p.max_uses > 0
+                  ? ` · использован ${p.used_count} из ${p.max_uses}`
+                  : p.used_count > 0 && ` · использован ${p.used_count} раз`}
                 {expired(p) && ' · истёк'}
+                {p.max_uses > 0 && p.used_count >= p.max_uses && ' · лимит выбран'}
               </span>
             </div>
             <button className="ghost danger" onClick={() => remove(p.id)}>Удалить</button>

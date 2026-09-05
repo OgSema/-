@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
 import { haptic } from '../tg'
+import Product from './Product'
 
 export default function Catalog({ products, categories, banners = [], cart, onAdd }) {
   const [categoryId, setCategoryId] = useState(null)
   const [query, setQuery] = useState('')
+  const [detail, setDetail] = useState(null)   // товар, открытый по кнопке «!»
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -53,6 +55,7 @@ export default function Catalog({ products, categories, banners = [], cart, onAd
       <div className="grid">
         {visible.map((p) => (
           <article key={p.id} className="card">
+            <button className="info" aria-label="Подробнее" onClick={() => setDetail(p)}>!</button>
             {p.photo_url ? (
               <img src={p.photo_url} alt={p.name} loading="lazy" />
             ) : (
@@ -78,6 +81,15 @@ export default function Catalog({ products, categories, banners = [], cart, onAd
           </article>
         ))}
       </div>
+
+      {detail && (
+        <Product
+          product={detail}
+          inCart={cart[detail.id] || 0}
+          onAdd={onAdd}
+          onClose={() => setDetail(null)}
+        />
+      )}
     </>
   )
 }

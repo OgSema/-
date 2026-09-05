@@ -51,16 +51,28 @@ const visible = (await (await call('/api/products', CUSTOMER)).json()).map((p) =
 check('товар без остатка скрыт от покупателя', !visible.includes(hidden.id) && visible.includes(created.id))
 
 // 3. Заказ
+const DELIVERY = { name: 'Иван', phone: '+79991234567', address: 'Москва, Тверская 1, кв. 5', comment: 'домофон 15' }
+
+check('заказ без телефона отклонён', (await call('/api/orders', CUSTOMER, {
+  method: 'POST', body: JSON.stringify({ items: [{ product_id: created.id, qty: 1 }], ...DELIVERY, phone: '' }),
+})).status === 400)
+check('заказ без адреса отклонён', (await call('/api/orders', CUSTOMER, {
+  method: 'POST', body: JSON.stringify({ items: [{ product_id: created.id, qty: 1 }], ...DELIVERY, address: '' }),
+})).status === 400)
+
 const orderRes = await call('/api/orders', CUSTOMER, {
-  method: 'POST', username: 'ivan', body: JSON.stringify({ items: [{ product_id: created.id, qty: 2 }] }),
+  method: 'POST', username: 'ivan', body: JSON.stringify({ items: [{ product_id: created.id, qty: 2 }], ...DELIVERY }),
 })
 const order = await orderRes.json()
 check('заказ создан', orderRes.status === 200, JSON.stringify(order).slice(0, 120))
 check('сумма посчитана по базе', order.total === 2400, String(order.total))
 check('состав заказа сохранён', order.items?.length === 1)
+check('контакты и адрес сохранены',
+  order.phone === DELIVERY.phone && order.address === DELIVERY.address && order.comment === DELIVERY.comment,
+  `${order.phone} / ${order.address}`)
 
 const again = await call('/api/orders', CUSTOMER, {
-  method: 'POST', body: JSON.stringify({ items: [{ product_id: created.id, qty: 1 }] }),
+  method: 'POST', body: JSON.stringify({ items: [{ product_id: created.id, qty: 1 }], ...DELIVERY }),
 })
 check('остаток списан, повторный заказ отклонён', again.status === 409, (await again.json()).detail)
 
@@ -117,15 +129,44 @@ const capped = await (await checkCode(bigOff.code)).json()
 check('скидка не больше суммы заказа', capped.discount === 1000 && capped.total === 0, JSON.stringify(capped))
 
 const discounted = await (await call('/api/orders', CUSTOMER, {
-  method: 'POST', username: 'ivan', body: JSON.stringify({ items: oneItem, promo_code: code10 }),
+  method: 'POST', username: 'ivan', body: JSON.stringify({ items: oneItem, promo_code: code10, ...DELIVERY }),
 })).json()
 check('заказ сохранил скидку', discounted.total === 900 && discounted.discount === 100 && discounted.promo_code === code10,
   `итого ${discounted.total}, скидка ${discounted.discount}`)
 
 const fake = await (await call('/api/orders', CUSTOMER, {
-  method: 'POST', username: 'ivan', body: JSON.stringify({ items: oneItem, promo_code: 'VYDUMANNYJ' }),
+  method: 'POST', username: 'ivan', body: JSON.stringify({ items: oneItem, promo_code: 'VYDUMANNYJ', ...DELIVERY }),
 })).json()
 check('выдуманный код не даёт скидки', fake.total === 1000 && fake.discount === 0)
+
+// 5б. Лимит применений
+const limited = await (await mkPromo({
+  code: 'LIM' + rnd(), kind: 'amount', value: 100, starts_at: day(-1), ends_at: day(7), max_uses: 1,
+})).json()
+check('лимит сохранён', limited.max_uses === 1 && limited.used_count === 0, JSON.stringify(limited))
+check('отрицательный лимит отклонён', (await mkPromo({
+  code: 'NEG' + rnd(), kind: 'amount', value: 100, starts_at: day(-1), ends_at: day(7), max_uses: -1,
+})).status === 400)
+
+const beforeLimit = await (await checkCode(limited.code)).json()
+check('до исчерпания код виден с остатком', beforeLimit.discount === 100 && beforeLimit.left === 1,
+  JSON.stringify(beforeLimit))
+
+const usedOnce = await (await call('/api/orders', CUSTOMER, {
+  method: 'POST', username: 'ivan', body: JSON.stringify({ items: oneItem, promo_code: limited.code, ...DELIVERY }),
+})).json()
+check('первый заказ получил скидку по лимитному коду', usedOnce.discount === 100, String(usedOnce.discount))
+
+check('исчерпанный код не проходит проверку', (await checkCode(limited.code)).status === 404)
+const afterLimit = await (await call('/api/orders', CUSTOMER, {
+  method: 'POST', username: 'ivan', body: JSON.stringify({ items: oneItem, promo_code: limited.code, ...DELIVERY }),
+})).json()
+check('второй заказ по исчерпанному коду без скидки', afterLimit.discount === 0 && afterLimit.total === 1000,
+  `итого ${afterLimit.total}, скидка ${afterLimit.discount}`)
+
+const promoList = await (await call('/api/promos', ADMIN)).json()
+check('счётчик применений вырос ровно на одно',
+  promoList.find((x) => x.id === limited.id)?.used_count === 1)
 
 // 6. Баннеры
 check('покупатель не может добавить баннер', (await call('/api/banners', CUSTOMER, {
@@ -144,7 +185,7 @@ await call(`/api/banners/${banner.id}`, ADMIN, { method: 'DELETE' })
 check('баннер удалён', !(await (await call('/api/banners', CUSTOMER)).json()).some((b) => b.id === banner.id))
 
 // 7. Уборка тестовых данных
-for (const id of [promo.id, expired.id, bigOff.id]) await call(`/api/promos/${id}`, ADMIN, { method: 'DELETE' })
+for (const id of [promo.id, expired.id, bigOff.id, limited.id]) await call(`/api/promos/${id}`, ADMIN, { method: 'DELETE' })
 for (const id of [created.id, hidden.id, promoItem.id]) await call(`/api/products/${id}`, ADMIN, { method: 'DELETE' })
 
 console.log(failed ? '\nЕСТЬ ПАДЕНИЯ' : '\nвсе проверки прошли')

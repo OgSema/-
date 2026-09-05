@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS orders (
   tg_user_id    INTEGER NOT NULL,
   username      TEXT NOT NULL DEFAULT '',
   customer_name TEXT NOT NULL DEFAULT '',
+  phone         TEXT NOT NULL DEFAULT '',     -- телефон или другой контакт
+  address       TEXT NOT NULL DEFAULT '',     -- куда везти
+  comment       TEXT NOT NULL DEFAULT '',     -- пожелания к доставке
   total         INTEGER NOT NULL DEFAULT 0,   -- к оплате, уже со скидкой
   discount      INTEGER NOT NULL DEFAULT 0,
   promo_code    TEXT NOT NULL DEFAULT '',
@@ -60,6 +63,8 @@ CREATE TABLE IF NOT EXISTS promos (
   value      INTEGER NOT NULL,
   starts_at  TEXT NOT NULL,                 -- YYYY-MM-DD, включительно
   ends_at    TEXT NOT NULL,                 -- YYYY-MM-DD, включительно
+  max_uses   INTEGER NOT NULL DEFAULT 0,     -- 0 — без ограничения
+  used_count INTEGER NOT NULL DEFAULT 0,
   is_active  INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

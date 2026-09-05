@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { HttpError, currentUser, requireAdmin } from './auth.js'
 import { handleUpdate } from './bot/index.js'
 import { adminChat, notifyNewOrder } from './notify.js'
-import { createOrder, findPromo, listCategories, listProducts, orderItems, priceCart, productRow, promoDiscount } from './shop.js'
+import { createOrder, deliveryFields, findPromo, listCategories, listProducts, orderItems, priceCart, productRow, promoDiscount } from './shop.js'
 import { fetchPhoto, uploadPhoto } from './telegram.js'
 
 const app = new Hono()
@@ -157,7 +157,7 @@ app.get('/api/promos', async (c) => {
 
 app.post('/api/promos', async (c) => {
   await requireAdmin(c)
-  const { code, kind, value, starts_at, ends_at } = await c.req.json()
+  const { code, kind, value, starts_at, ends_at, max_uses = 0 } = await c.req.json()
 
   const clean = String(code || '').trim().toUpperCase()
   if (!/^[A-Z0-9-]{3,32}$/.test(clean)) throw new HttpError(400, 'Код: 3–32 знака, латиница, цифры и дефис')
@@ -171,10 +171,14 @@ app.post('/api/promos', async (c) => {
   if (!isDate(starts_at) || !isDate(ends_at)) throw new HttpError(400, 'Укажите даты начала и окончания')
   if (ends_at < starts_at) throw new HttpError(400, 'Дата окончания раньше начала')
 
+  // 0 — без ограничения: код живёт только по датам.
+  const limit = Number(max_uses) || 0
+  if (!Number.isInteger(limit) || limit < 0) throw new HttpError(400, 'Лимит применений не может быть отрицательным')
+
   try {
     const row = await c.env.DB.prepare(
-      'INSERT INTO promos (code, kind, value, starts_at, ends_at) VALUES (?, ?, ?, ?, ?) RETURNING *',
-    ).bind(clean, kind, amount, starts_at, ends_at).first()
+      'INSERT INTO promos (code, kind, value, starts_at, ends_at, max_uses) VALUES (?, ?, ?, ?, ?, ?) RETURNING *',
+    ).bind(clean, kind, amount, starts_at, ends_at, limit).first()
     return c.json(promoRow(row))
   } catch {
     throw new HttpError(409, 'Такой код уже есть')
@@ -197,7 +201,11 @@ app.post('/api/promos/check', async (c) => {
 
   const { total } = await priceCart(c.env.DB, items)
   const discount = promoDiscount(promo, total)
-  return c.json({ code: promo.code, kind: promo.kind, value: promo.value, subtotal: total, discount, total: total - discount })
+  return c.json({
+    code: promo.code, kind: promo.kind, value: promo.value,
+    left: promo.max_uses ? promo.max_uses - promo.used_count : null,
+    subtotal: total, discount, total: total - discount,
+  })
 })
 
 // ---------- заказы ----------
@@ -206,8 +214,10 @@ const withItems = async (db, order) => ({ ...order, items: await orderItems(db, 
 
 app.post('/api/orders', async (c) => {
   const user = await currentUser(c)
-  const { items, promo_code = '' } = await c.req.json()
-  const order = await createOrder(c.env, user, items, promo_code)
+  const body = await c.req.json()
+  const { items, promo_code = '' } = body
+  // Имя берём из формы, но если покупатель стёр его — подставляем имя из Telegram.
+  const order = await createOrder(c.env, user, items, promo_code, deliveryFields({ ...body, name: body.name || user.name }))
   return c.json({ ...order, ...(await notifyNewOrder(c.env, order)) })
 })
 

@@ -6,6 +6,16 @@ import Catalog from './components/Catalog'
 import Cart from './components/Cart'
 import Admin from './components/Admin'
 
+/** Корзина переживает закрытие Mini App: Telegram выгружает страницу целиком. */
+const savedCart = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem('cart') || '{}')
+    return typeof saved === 'object' && saved ? saved : {}
+  } catch {
+    return {}
+  }
+}
+
 export default function App() {
   const [user, setUser] = useState(null)
   const [error, setError] = useState('')
@@ -14,7 +24,7 @@ export default function App() {
 
   const [categories, setCategories] = useState([])
   const [products, setProducts] = useState([])
-  const [cart, setCart] = useState({})
+  const [cart, setCart] = useState(savedCart)
   const [banners, setBanners] = useState([])
   const [shortcut, setShortcut] = useState('unsupported')   // ярлык на экране телефона
 
@@ -23,6 +33,17 @@ export default function App() {
     setCategories(cats)
     setProducts(items)
     setBanners(ads.filter((b) => b.is_active))
+
+    // Пока корзина лежала в памяти телефона, товар могли снять с продажи или
+    // разобрать: выкидываем исчезнувшее и подрезаем количество под остаток.
+    setCart((c) => {
+      const next = {}
+      for (const [id, qty] of Object.entries(c)) {
+        const p = items.find((i) => i.id === Number(id))
+        if (p && p.stock > 0) next[id] = Math.min(qty, p.stock)
+      }
+      return next
+    })
   }, [])
 
   useEffect(() => {
@@ -32,6 +53,12 @@ export default function App() {
       .then(load)
       .catch((e) => setError(e.message))
   }, [load])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('cart', JSON.stringify(cart))
+    } catch { /* приватный режим — переживём без сохранения */ }
+  }, [cart])
 
   useEffect(() => {
     homeScreenStatus().then(setShortcut)
@@ -72,6 +99,7 @@ export default function App() {
           <Cart
             cart={cart}
             products={products}
+            user={user}
             onQty={setQty}
             onDone={() => { setCart({}); setTab('catalog'); load() }}
           />

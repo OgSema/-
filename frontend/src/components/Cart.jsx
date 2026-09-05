@@ -2,11 +2,23 @@ import { useState } from 'react'
 import { api } from '../api'
 import { haptic, showAlert } from '../tg'
 
-export default function Cart({ cart, products, onQty, onDone }) {
+const EMPTY_DELIVERY = { name: '', phone: '', address: '', comment: '' }
+
+/** Контакты не меняются от заказа к заказу — незачем набирать их каждый раз. */
+const savedDelivery = (user) => {
+  try {
+    return { ...EMPTY_DELIVERY, name: user?.name || '', ...JSON.parse(localStorage.getItem('delivery') || '{}') }
+  } catch {
+    return { ...EMPTY_DELIVERY, name: user?.name || '' }
+  }
+}
+
+export default function Cart({ cart, products, user, onQty, onDone }) {
   const [sending, setSending] = useState(false)
   const [code, setCode] = useState('')
   const [promo, setPromo] = useState(null)      // подтверждённый сервером код
   const [checking, setChecking] = useState(false)
+  const [delivery, setDelivery] = useState(() => savedDelivery(user))
 
   const lines = Object.entries(cart)
     .map(([id, qty]) => ({ product: products.find((p) => p.id === Number(id)), qty }))
@@ -41,11 +53,16 @@ export default function Cart({ cart, products, onQty, onDone }) {
 
   const drop = () => { setPromo(null); setCode('') }
 
+  const set = (field) => (e) => setDelivery((d) => ({ ...d, [field]: e.target.value }))
+
   const submit = async () => {
     if (sending || lines.length === 0) return
     setSending(true)
     try {
-      await api.createOrder(items(), promo?.code || '')
+      await api.createOrder(items(), promo?.code || '', delivery)
+      try {
+        localStorage.setItem('delivery', JSON.stringify(delivery))
+      } catch { /* приватный режим — просто не запомним */ }
       haptic('medium')
       showAlert('Заказ отправлен. Подробности — в чате с ботом.')
       onDone()
@@ -92,8 +109,23 @@ export default function Cart({ cart, products, onQty, onDone }) {
         <p className="promo-ok small">
           Код {promo.code} применён: −{discount} ₽
           {promo.kind === 'percent' && ` (${promo.value}%)`}
+          {promo.left !== null && promo.left !== undefined && ` · осталось применений: ${promo.left}`}
         </p>
       )}
+
+      <section className="delivery">
+        <h3>Доставка</h3>
+        <label>Имя<input value={delivery.name} onChange={set('name')} placeholder="Как к вам обращаться" /></label>
+        <label>
+          Телефон или контакт
+          <input type="tel" inputMode="tel" value={delivery.phone} onChange={set('phone')} placeholder="+7 999 123-45-67" />
+        </label>
+        <label>Адрес<input value={delivery.address} onChange={set('address')} placeholder="Улица, дом, квартира" /></label>
+        <label>
+          Комментарий
+          <textarea rows="2" value={delivery.comment} onChange={set('comment')} placeholder="Домофон, время, пожелания" />
+        </label>
+      </section>
 
       <div className="total">
         <span>Итого</span>

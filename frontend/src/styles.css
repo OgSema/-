@@ -127,9 +127,22 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 .card {
+  position: relative;
   background: var(--glass); border-radius: var(--radius); overflow: hidden;
   display: flex; flex-direction: column;
   border: 1px solid var(--border); box-shadow: var(--sheen), var(--lift);
+}
+
+/* Кружок «!» поверх фото: подробности товара, чтобы карточка в сетке
+   оставалась короткой, а описание не съедало место. */
+.info {
+  position: absolute; top: 8px; left: 8px; z-index: 1;
+  width: 24px; height: 24px; border-radius: 50%; padding: 0;
+  display: grid; place-items: center;
+  background: rgba(20, 20, 24, .55); color: var(--text);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border: 1px solid var(--border); box-shadow: var(--sheen);
+  font-size: 14px; font-weight: 700; line-height: 1; cursor: pointer;
 }
 .card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
 .no-photo {
@@ -236,6 +249,34 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .sheet label.checkbox input, .sheet label.photo input { width: auto; margin: 0; }
 .preview { width: 100%; max-height: 180px; object-fit: cover; border-radius: var(--radius); }
 .sheet-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+/* ---------- карточка товара ---------- */
+
+.product-sheet .price { font-size: 20px; }
+.product-photo {
+  width: 100%; aspect-ratio: 1; object-fit: cover;
+  border-radius: var(--radius); margin-bottom: 12px;
+}
+.specs { margin: 0 0 10px; font-size: 13px; }
+.specs > div { display: flex; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.specs dt { color: var(--hint); flex: 0 0 84px; }
+.specs dd { margin: 0; }
+.description { margin: 10px 0; white-space: pre-line; }
+.product-buy { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+
+/* ---------- доставка в корзине ---------- */
+
+.delivery { margin-top: 18px; }
+.delivery h3 { margin: 0 0 6px; font-size: 15px; }
+.delivery label { display: block; font-size: 13px; color: var(--hint); }
+.delivery input, .delivery textarea {
+  width: 100%; padding: 11px 12px; margin: 6px 0;
+  background: var(--glass); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--sheen); font: inherit;
+  -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+}
+.delivery-info { margin: 0; line-height: 1.5; }
 
 .primary.sticky {
   position: sticky; bottom: calc(72px + env(safe-area-inset-bottom));
