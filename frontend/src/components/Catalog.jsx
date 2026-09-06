@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { haptic } from '../tg'
 import Product from './Product'
 
@@ -10,6 +10,32 @@ const plural = (n, forms) =>
  * подряд. Товары показываются внутри выбранного раздела; общий список остаётся
  * только у поиска, чтобы искомое находилось не глядя на разделы.
  */
+const SHOW = 4500   // сколько баннер висит перед сменой
+
+/** Реклама сменяется сама: полоса стоит на месте, картинки перетекают друг в друга. */
+function Banners({ items }) {
+  const [shown, setShown] = useState(0)
+
+  useEffect(() => {
+    if (items.length < 2) return
+    const timer = setInterval(() => setShown((n) => (n + 1) % items.length), SHOW)
+    return () => clearInterval(timer)
+  }, [items.length])
+
+  return (
+    <div className="banners">
+      {items.map((b, i) => (
+        <img
+          key={b.id}
+          className={i === shown ? 'banner shown' : 'banner'}
+          src={b.photo_url}
+          alt=""
+        />
+      ))}
+    </div>
+  )
+}
+
 export default function Catalog({ products, categories, banners = [], cart, onAdd }) {
   const [categoryId, setCategoryId] = useState(null)
   const [query, setQuery] = useState('')
@@ -65,13 +91,7 @@ export default function Catalog({ products, categories, banners = [], cart, onAd
 
   return (
     <>
-      {home && banners.length > 0 && (
-        <div className="banners">
-          {banners.map((b) => (
-            <img key={b.id} className="banner" src={b.photo_url} alt="" loading="lazy" />
-          ))}
-        </div>
-      )}
+      {home && banners.length > 0 && <Banners items={banners} />}
 
       <input
         className="search"

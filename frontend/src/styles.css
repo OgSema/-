@@ -83,10 +83,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .content { padding: 0 16px 16px; }
 
 /* Вкладка остаётся в разметке и только прячется — переключение мгновенное.
-   Появление сдвигом и прозрачностью, чтобы смена не резала глаз. */
+   Появление только прозрачностью: сдвиг дёргал бы всё приложение при каждом
+   переключении. И без fill: с ним анимация висит на вкладке навсегда, делает
+   её системой координат для position: fixed, и шторки уезжают вверх вместо
+   низа экрана. */
 .pane { display: none; }
-.pane.active { display: block; animation: pane-in .22s ease both; }
-@keyframes pane-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.pane.active { display: block; animation: pane-in .18s ease-out; }
+@keyframes pane-in { from { opacity: 0; } to { opacity: 1; } }
 
 .screen {
   min-height: 100vh; display: flex; flex-direction: column;
@@ -374,21 +377,19 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---------- рекламная лента на главной ---------- */
 
 .banners {
-  display: flex; gap: 10px; overflow-x: auto; margin-bottom: 12px;
-  scroll-snap-type: x mandatory; scrollbar-width: none;
+  position: relative; aspect-ratio: 3 / 1; overflow: hidden; margin-bottom: 12px;
+  border-radius: var(--radius); border: 1px solid var(--border); box-shadow: var(--lift);
 }
-.banners::-webkit-scrollbar { display: none; }
-/* Лента — узкая полоса, а не пол-экрана: реклама подсказывает, но не заслоняет
-   товар. Нажимать не на что, поэтому картинка не ловит касания и не открывает
-   меню сохранения по долгому нажатию — лента остаётся перелистываемой. */
+/* Полоса стоит на месте, картинки лежат друг на друге и сменяются по кругу:
+   листать нечего, поэтому касания она не ловит. Высоту держит соотношение
+   сторон — картинки вынуты из потока и сами её не задают. */
 .banner {
-  /* min-width: 0 обязателен: иначе флекс раздувает картинку до её собственной
-     ширины, и полоса вырастает на пол-экрана вместо заданных 92%. */
-  flex: 0 0 92%; min-width: 0; aspect-ratio: 3 / 1; object-fit: cover;
-  border-radius: var(--radius); scroll-snap-align: center;
-  border: 1px solid var(--border); box-shadow: var(--lift);
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  opacity: 0; transition: opacity 1s ease;
   pointer-events: none; user-select: none; -webkit-user-drag: none;
 }
+.banner.shown { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .banner { transition: none; } }
 
 .banner-row img { width: 96px; height: 32px; object-fit: cover; border-radius: 8px; }
 
