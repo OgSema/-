@@ -106,7 +106,8 @@ export default function Catalog({ products, categories, banners = [], cart, onAd
           : (
             <div className="sections">
               {sections.map((c) => {
-                const cover = c.items.find((p) => p.photo_url)?.photo_url
+                // Заставка раздела, а если её не поставили — фото первого товара.
+                const cover = c.photo_url || c.items.find((p) => p.photo_url)?.photo_url
                 return (
                   <button key={c.id} className="section" onClick={() => { haptic(); setCategoryId(c.id) }}>
                     {cover ? <img src={cover} alt="" loading="lazy" /> : <div className="no-photo" />}

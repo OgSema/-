@@ -222,6 +222,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .order-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .order-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
+/* Раздел: название сверху, кнопки строкой под ним — иначе три кнопки сжимают
+   название до одной буквы. */
+.admin-list li.cat-row { flex-direction: column; align-items: stretch; gap: 8px; }
+.cat-head { display: flex; align-items: center; gap: 10px; }
+.cat-head img { width: 64px; height: 48px; border-radius: 10px; object-fit: cover; }
+.cat-head .no-photo { width: 64px; height: 48px; aspect-ratio: auto; border-radius: 10px; }
+.cat-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
 .row { display: flex; gap: 8px; align-items: flex-end; }
 .row > * { flex: 1; }
 

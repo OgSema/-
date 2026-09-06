@@ -117,6 +117,8 @@ function Orders() {
 
 function Categories({ categories, onChange }) {
   const [name, setName] = useState('')
+  const [cropping, setCropping] = useState(null)   // { file, id } — заставка ждёт обрезки
+  const [busy, setBusy] = useState(0)              // id раздела, чья заставка грузится
 
   const add = async () => {
     if (!name.trim()) return
@@ -138,6 +140,39 @@ function Categories({ categories, onChange }) {
     }
   }
 
+  const pick = (id) => (e) => {
+    const file = e.target.files?.[0]
+    if (file) setCropping({ file, id })
+    e.target.value = ''
+  }
+
+  const saveCover = async (file) => {
+    const { id } = cropping
+    setCropping(null)
+    setBusy(id)
+    try {
+      const { url } = await api.upload(file)
+      await api.updateCategory(id, { photo_url: url })
+      onChange()
+    } catch (e) {
+      showAlert(e.message)
+    } finally {
+      setBusy(0)
+    }
+  }
+
+  const dropCover = async (id) => {
+    setBusy(id)
+    try {
+      await api.updateCategory(id, { photo_url: '' })
+      onChange()
+    } catch (e) {
+      showAlert(e.message)
+    } finally {
+      setBusy(0)
+    }
+  }
+
   return (
     <>
       <div className="row">
@@ -146,12 +181,35 @@ function Categories({ categories, onChange }) {
       </div>
       <ul className="admin-list">
         {categories.map((c) => (
-          <li key={c.id}>
-            <div className="cart-info"><strong>{c.name}</strong></div>
-            <button className="ghost danger" onClick={() => remove(c.id)}>Удалить</button>
+          <li key={c.id} className="cat-row">
+            <div className="cat-head">
+              {c.photo_url
+                ? <img src={c.photo_url} alt="" />
+                : <div className="no-photo">—</div>}
+              <div className="cart-info">
+                <strong>{c.name}</strong>
+                {!c.photo_url && <span className="muted small">без заставки</span>}
+              </div>
+            </div>
+            <div className="cat-actions">
+              <label className="ghost pick">
+                {busy === c.id ? '…' : c.photo_url ? 'Заменить заставку' : 'Поставить заставку'}
+                <input type="file" accept="image/*" disabled={!!busy} onChange={pick(c.id)} hidden />
+              </label>
+              {c.photo_url && (
+                <button className="ghost" disabled={!!busy} onClick={() => dropCover(c.id)}>Убрать</button>
+              )}
+              <button className="ghost danger" onClick={() => remove(c.id)}>Удалить</button>
+            </div>
           </li>
         ))}
       </ul>
+
+      {/* 4:3 — ровно то, чем плитка показывается на главной. */}
+      {cropping && (
+        <Cropper file={cropping.file} aspect={4 / 3} outWidth={900}
+          onCancel={() => setCropping(null)} onDone={saveCover} />
+      )}
     </>
   )
 }

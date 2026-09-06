@@ -1,7 +1,8 @@
 CREATE TABLE IF NOT EXISTS categories (
-  id    INTEGER PRIMARY KEY AUTOINCREMENT,
-  name  TEXT NOT NULL,
-  sort  INTEGER NOT NULL DEFAULT 0
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  name      TEXT NOT NULL,
+  photo_url TEXT NOT NULL DEFAULT '',   -- заставка на плитке главной
+  sort      INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS products (

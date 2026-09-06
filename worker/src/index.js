@@ -47,11 +47,31 @@ app.get('/api/categories', async (c) => c.json(await listCategories(c.env.DB)))
 
 app.post('/api/categories', async (c) => {
   await requireAdmin(c)
-  const { name, sort = 0 } = await c.req.json()
-  if (!name?.trim()) throw new HttpError(400, 'Укажите название категории')
-  const row = await c.env.DB.prepare('INSERT INTO categories (name, sort) VALUES (?, ?) RETURNING *')
-    .bind(name.trim(), Number(sort) || 0).first()
+  const { name, photo_url = '', sort = 0 } = await c.req.json()
+  if (!name?.trim()) throw new HttpError(400, 'Укажите название раздела')
+  const row = await c.env.DB.prepare(
+    'INSERT INTO categories (name, photo_url, sort) VALUES (?, ?, ?) RETURNING *',
+  ).bind(name.trim(), String(photo_url || ''), Number(sort) || 0).first()
   return c.json(row)
+})
+
+/** Меняем по одному полю: с фронта приходит только заставка. */
+app.patch('/api/categories/:id', async (c) => {
+  await requireAdmin(c)
+  const body = await c.req.json()
+  const id = Number(c.req.param('id'))
+
+  const row = await c.env.DB.prepare('SELECT * FROM categories WHERE id = ?').bind(id).first()
+  if (!row) throw new HttpError(404, 'Раздел не найден')
+
+  const name = body.name === undefined ? row.name : String(body.name).trim()
+  if (!name) throw new HttpError(400, 'Укажите название раздела')
+  // Пустая строка — осознанное «убрать заставку», поэтому отличаем её от undefined.
+  const photo = body.photo_url === undefined ? row.photo_url : String(body.photo_url || '')
+
+  return c.json(await c.env.DB.prepare(
+    'UPDATE categories SET name = ?, photo_url = ? WHERE id = ? RETURNING *',
+  ).bind(name, photo, id).first())
 })
 
 app.delete('/api/categories/:id', async (c) => {

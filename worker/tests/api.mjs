@@ -44,6 +44,20 @@ const cat = await (await call('/api/categories', ADMIN, {
   method: 'POST', body: JSON.stringify({ name: 'Проверочный раздел ' + Math.random().toString(36).slice(2, 7) }),
 })).json()
 check('админ создал раздел', cat.id > 0, JSON.stringify(cat).slice(0, 80))
+check('покупатель не может менять раздел', (await call(`/api/categories/${cat.id}`, CUSTOMER, {
+  method: 'PATCH', body: JSON.stringify({ photo_url: '/photo/x' }),
+})).status === 403)
+const covered = await (await call(`/api/categories/${cat.id}`, ADMIN, {
+  method: 'PATCH', body: JSON.stringify({ photo_url: '/photo/cover' }),
+})).json()
+check('заставка раздела сохранена', covered.photo_url === '/photo/cover', covered.photo_url)
+check('заставка видна покупателю',
+  (await (await call('/api/categories', CUSTOMER)).json()).find((x) => x.id === cat.id)?.photo_url === '/photo/cover')
+const bare = await (await call(`/api/categories/${cat.id}`, ADMIN, {
+  method: 'PATCH', body: JSON.stringify({ photo_url: '' }),
+})).json()
+check('заставку можно убрать', bare.photo_url === '' && bare.name === cat.name)
+
 check('товар без раздела отклонён', (await call('/api/products', ADMIN, {
   method: 'POST', body: JSON.stringify({ name: 'Ничей', price: 10, stock: 1 }),
 })).status === 400)

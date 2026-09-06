@@ -41,6 +41,7 @@ export const api = {
 
   categories: () => request('/api/categories'),
   createCategory: (data) => request('/api/categories', { method: 'POST', body: data }),
+  updateCategory: (id, data) => request(`/api/categories/${id}`, { method: 'PATCH', body: data }),
   deleteCategory: (id) => request(`/api/categories/${id}`, { method: 'DELETE' }),
 
   products: (params = {}) => {
