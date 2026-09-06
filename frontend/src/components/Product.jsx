@@ -2,11 +2,7 @@ import { haptic } from '../tg'
 
 /** Подробности товара: открывается кнопкой «!» на карточке в каталоге. */
 export default function Product({ product, inCart, onAdd, onClose }) {
-  const specs = [
-    ['Бренд', product.brand],
-    ['Вкус', product.flavor],
-    ['Фасовка', product.weight],
-  ].filter(([, v]) => v)
+  const specs = [['Вкус', product.flavor]].filter(([, v]) => v)
 
   return (
     <div className="sheet-backdrop" onClick={onClose}>

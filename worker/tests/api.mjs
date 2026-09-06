@@ -39,13 +39,25 @@ check('админ узнан по подписи', (await (await call('/api/me',
 check('обычный юзер не админ', (await (await call('/api/me', CUSTOMER)).json()).is_admin === false)
 
 // 2. Права
-const body = JSON.stringify({ name: 'Проверочный табак', price: 1200, stock: 2, brand: 'Darkside' })
+// Витрина построена на разделах: товар без раздела сервер не принимает.
+const cat = await (await call('/api/categories', ADMIN, {
+  method: 'POST', body: JSON.stringify({ name: 'Проверочный раздел ' + Math.random().toString(36).slice(2, 7) }),
+})).json()
+check('админ создал раздел', cat.id > 0, JSON.stringify(cat).slice(0, 80))
+check('товар без раздела отклонён', (await call('/api/products', ADMIN, {
+  method: 'POST', body: JSON.stringify({ name: 'Ничей', price: 10, stock: 1 }),
+})).status === 400)
+check('товар в несуществующий раздел отклонён', (await call('/api/products', ADMIN, {
+  method: 'POST', body: JSON.stringify({ name: 'Ничей', price: 10, stock: 1, category_id: 10 ** 9 }),
+})).status === 400)
+
+const body = JSON.stringify({ name: 'Проверочный табак', price: 1200, stock: 2, category_id: cat.id })
 check('покупатель не может создать товар', (await call('/api/products', CUSTOMER, { method: 'POST', body })).status === 403)
 const created = await (await call('/api/products', ADMIN, { method: 'POST', body })).json()
 check('админ создал товар', created.id > 0, JSON.stringify(created).slice(0, 90))
 
 const hidden = await (await call('/api/products', ADMIN, {
-  method: 'POST', body: JSON.stringify({ name: 'Скрытый', price: 10, stock: 0 }),
+  method: 'POST', body: JSON.stringify({ name: 'Скрытый', price: 10, stock: 0, category_id: cat.id }),
 })).json()
 const visible = (await (await call('/api/products', CUSTOMER)).json()).map((p) => p.id)
 check('товар без остатка скрыт от покупателя', !visible.includes(hidden.id) && visible.includes(created.id))
@@ -106,7 +118,7 @@ const bigOff = await (await mkPromo({ code: 'BIG' + rnd(), kind: 'amount', value
 
 // Товар ровно за 1000 ₽ — на нём удобно считать скидки.
 const promoItem = await (await call('/api/products', ADMIN, {
-  method: 'POST', body: JSON.stringify({ name: 'Товар для промо', price: 1000, stock: 10 }),
+  method: 'POST', body: JSON.stringify({ name: 'Товар для промо', price: 1000, stock: 10, category_id: cat.id }),
 })).json()
 const oneItem = [{ product_id: promoItem.id, qty: 1 }]
 const checkCode = (code) => call('/api/promos/check', CUSTOMER, {
@@ -165,7 +177,7 @@ check('счётчик применений вырос ровно на одно',
 // 6. Лояльность
 const LOYAL = 900000 + rnd()
 const loyaltyItem = await (await call('/api/products', ADMIN, {
-  method: 'POST', body: JSON.stringify({ name: 'Товар для уровней', price: 1000, stock: 60 }),
+  method: 'POST', body: JSON.stringify({ name: 'Товар для уровней', price: 1000, stock: 60, category_id: cat.id }),
 })).json()
 const buy = (qty, code = '', id = LOYAL) => call('/api/orders', id, {
   method: 'POST', username: 'loyal',
@@ -238,7 +250,7 @@ check('отменённый заказ выкуп забирает', canceled.sp
 // Верхний уровень: порог 20 000 ₽.
 const VIP = 910000 + rnd()
 const vipItem = await (await call('/api/products', ADMIN, {
-  method: 'POST', body: JSON.stringify({ name: 'Кальян в сборе', price: 20000, stock: 3 }),
+  method: 'POST', body: JSON.stringify({ name: 'Кальян в сборе', price: 20000, stock: 3, category_id: cat.id }),
 })).json()
 const vipOrder = await (await call('/api/orders', VIP, {
   method: 'POST', body: JSON.stringify({ items: [{ product_id: vipItem.id, qty: 1 }], ...DELIVERY }),
@@ -265,6 +277,9 @@ check('баннер виден покупателю', (await (await call('/api/b
 await call(`/api/banners/${banner.id}`, ADMIN, { method: 'DELETE' })
 check('баннер удалён', !(await (await call('/api/banners', CUSTOMER)).json()).some((b) => b.id === banner.id))
 
+check('непустой раздел удалить нельзя',
+  (await call(`/api/categories/${cat.id}`, ADMIN, { method: 'DELETE' })).status === 409)
+
 // 8. Уборка тестовых данных
 for (const id of [promo.id, expired.id, bigOff.id, limited.id, weak.id, strong.id]) {
   await call(`/api/promos/${id}`, ADMIN, { method: 'DELETE' })
@@ -272,6 +287,8 @@ for (const id of [promo.id, expired.id, bigOff.id, limited.id, weak.id, strong.i
 for (const id of [created.id, hidden.id, promoItem.id, loyaltyItem.id, vipItem.id]) {
   await call(`/api/products/${id}`, ADMIN, { method: 'DELETE' })
 }
+check('опустевший раздел удалён',
+  (await call(`/api/categories/${cat.id}`, ADMIN, { method: 'DELETE' })).ok)
 
 console.log(failed ? '\nЕСТЬ ПАДЕНИЯ' : '\nвсе проверки прошли')
 process.exit(failed ? 1 : 0)

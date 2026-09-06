@@ -1,80 +1,104 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+
+const MIN = 72   // меньше рамку не ужать: в углы нужно попадать пальцем
 
 /**
- * Кадрирование перед загрузкой: картинка тянется пальцем, масштаб — ползунком.
- * Соотношение сторон задаёт вызывающий (1 — квадрат для товара, 16/9 — баннер),
- * поэтому карточки в каталоге и лента на главной остаются одного размера.
+ * Обрезка перед загрузкой. Картинка видна целиком, поверх неё — рамка кадра:
+ * её таскают пальцем и тянут за углы. Так в кадр попадает любая часть снимка,
+ * а не только то, что влезло при масштабировании.
+ *
+ * Соотношение сторон задаёт вызывающий (1 — квадрат товара, 3 — лента баннеров),
+ * поэтому карточки в каталоге и реклама на главной остаются одного размера.
+ * Прозрачность переживает обрезку: PNG остаётся PNG.
  */
 export default function Cropper({ file, aspect = 1, outWidth = 900, onCancel, onDone }) {
   const [src] = useState(() => URL.createObjectURL(file))
-  const [nat, setNat] = useState(null)          // натуральный размер картинки
-  const [zoom, setZoom] = useState(1)
-  const [pos, setPos] = useState({ x: 0, y: 0 }) // сдвиг центра картинки, в пикселях рамки
+  const [nat, setNat] = useState(null)     // натуральный размер картинки
+  const [disp, setDisp] = useState(null)   // её размер на экране
+  const [rect, setRect] = useState(null)   // рамка кадра в экранных пикселях
   const [busy, setBusy] = useState(false)
-  const [box, setBox] = useState(0)             // ширина рамки, меряется после вёрстки
-  const frame = useRef(null)
+  const imgRef = useRef(null)
   const drag = useRef(null)
 
-  useLayoutEffect(() => () => URL.revokeObjectURL(src), [src])
-  useLayoutEffect(() => { setBox(frame.current?.clientWidth || 0) }, [])
+  useEffect(() => () => URL.revokeObjectURL(src), [src])
 
-  // Высота рамки — из соотношения сторон.
-  const boxH = box / aspect
+  // Самый большой кадр, влезающий в картинку целиком, по центру.
+  const fit = (w, h) => {
+    const cw = Math.min(w, h * aspect)
+    return { x: (w - cw) / 2, y: (h - cw / aspect) / 2, w: cw }
+  }
 
-  // Базовый масштаб — «покрыть рамку», дальше умножаем на зум.
-  const cover = nat && box ? Math.max(box / nat.w, boxH / nat.h) : 1
-  const scale = cover * zoom
+  const measure = () => {
+    const el = imgRef.current
+    if (!el?.clientWidth) return
+    setNat({ w: el.naturalWidth, h: el.naturalHeight })
+    setDisp({ w: el.clientWidth, h: el.clientHeight })
+    setRect(fit(el.clientWidth, el.clientHeight))
+  }
 
-  // Картинка обязана закрывать рамку целиком, иначе в кадр попадут пустые поля.
-  const clamp = (p, s = scale) => {
-    if (!nat) return p
-    const maxX = Math.max(0, (nat.w * s - box) / 2)
-    const maxY = Math.max(0, (nat.h * s - boxH) / 2)
+  const clampMove = (r, dx, dy) => {
+    const h = r.w / aspect
     return {
-      x: Math.min(maxX, Math.max(-maxX, p.x)),
-      y: Math.min(maxY, Math.max(-maxY, p.y)),
+      ...r,
+      x: Math.min(disp.w - r.w, Math.max(0, r.x + dx)),
+      y: Math.min(disp.h - h, Math.max(0, r.y + dy)),
     }
   }
 
-  const onDown = (e) => {
-    const t = e.touches?.[0] || e
-    drag.current = { x: t.clientX - pos.x, y: t.clientY - pos.y }
-  }
-  const onMove = (e) => {
-    if (!drag.current) return
-    e.preventDefault()
-    const t = e.touches?.[0] || e
-    setPos(clamp({ x: t.clientX - drag.current.x, y: t.clientY - drag.current.y }))
-  }
-  const onUp = () => { drag.current = null }
+  // Угол тянет только по горизонтали: высота идёт следом за соотношением,
+  // а противоположный угол стоит на месте.
+  const resize = (r, corner, dx) => {
+    const right = r.x + r.w
+    const bottom = r.y + r.w / aspect
+    const grow = corner === 'se' || corner === 'ne' ? dx : -dx
+    const limit = corner === 'se' ? Math.min(disp.w - r.x, (disp.h - r.y) * aspect)
+      : corner === 'sw' ? Math.min(right, (disp.h - r.y) * aspect)
+        : corner === 'ne' ? Math.min(disp.w - r.x, bottom * aspect)
+          : Math.min(right, bottom * aspect)
 
-  const changeZoom = (e) => {
-    const z = Number(e.target.value)
-    setZoom(z)
-    setPos((p) => clamp(p, cover * z))
+    const w = Math.max(MIN, Math.min(limit, r.w + grow))
+    const x = corner === 'se' || corner === 'ne' ? r.x : right - w
+    const y = corner === 'se' || corner === 'sw' ? r.y : bottom - w / aspect
+    return { x, y, w }
   }
+
+  const start = (mode) => (e) => {
+    if (!rect) return
+    e.preventDefault()
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    drag.current = { mode, px: e.clientX, py: e.clientY, from: rect }
+  }
+  const move = (e) => {
+    const d = drag.current
+    if (!d || !disp) return
+    const dx = e.clientX - d.px
+    const dy = e.clientY - d.py
+    setRect(d.mode === 'move' ? clampMove(d.from, dx, dy) : resize(d.from, d.mode, dx))
+  }
+  const end = () => { drag.current = null }
 
   const confirm = async () => {
-    if (!nat || !box) return
+    if (!nat || !disp || !rect) return
     setBusy(true)
     try {
-      // Переводим рамку в координаты исходной картинки и режем канвасом.
-      const left = box / 2 + pos.x - (nat.w * scale) / 2
-      const top = boxH / 2 + pos.y - (nat.h * scale) / 2
-      const sx = -left / scale
-      const sy = -top / scale
-      const sw = box / scale
-      const sh = boxH / scale
-
+      const scale = nat.w / disp.w
       const canvas = document.createElement('canvas')
       canvas.width = outWidth
       canvas.height = Math.round(outWidth / aspect)
+
       const img = new Image()
       await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = src })
-      canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height)
+      canvas.getContext('2d').drawImage(
+        img,
+        rect.x * scale, rect.y * scale, rect.w * scale, (rect.w / aspect) * scale,
+        0, 0, canvas.width, canvas.height,
+      )
 
-      const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.85))
-      onDone(new File([blob], 'photo.jpg', { type: 'image/jpeg' }))
+      // JPEG залил бы вырезанный на айфоне фон чёрным — прозрачное отдаём PNG.
+      const png = file.type === 'image/png'
+      const blob = await new Promise((res) => canvas.toBlob(res, png ? 'image/png' : 'image/jpeg', 0.85))
+      onDone(new File([blob], png ? 'photo.png' : 'photo.jpg', { type: blob.type }))
     } finally {
       setBusy(false)
     }
@@ -83,36 +107,41 @@ export default function Cropper({ file, aspect = 1, outWidth = 900, onCancel, on
   return (
     <div className="sheet-backdrop" onClick={(e) => { e.stopPropagation(); onCancel() }}>
       <div className="sheet crop" onClick={(e) => e.stopPropagation()}>
-        <h2>Кадрирование</h2>
+        <h2>Обрезка</h2>
 
-        <div
-          className="crop-frame"
-          ref={frame}
-          style={{ aspectRatio: String(aspect) }}
-          onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
-          onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}
-        >
-          <img
-              src={src}
-              alt=""
-              draggable="false"
-              onLoad={(e) => setNat({ w: e.target.naturalWidth, h: e.target.naturalHeight })}
-              style={{
-                width: nat ? nat.w * scale : 'auto',
-                transform: `translate(-50%, -50%) translate(${pos.x}px, ${pos.y}px)`,
-            }}
-          />
+        <div className="crop-stage">
+          <div className="crop-holder">
+            <img ref={imgRef} src={src} alt="" draggable="false" onLoad={measure} />
+            {rect && (
+              <div
+                className="crop-box"
+                style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.w / aspect }}
+                onPointerDown={start('move')}
+                onPointerMove={move}
+                onPointerUp={end}
+                onPointerCancel={end}
+              >
+                {['nw', 'ne', 'sw', 'se'].map((corner) => (
+                  <span
+                    key={corner}
+                    className={`handle ${corner}`}
+                    onPointerDown={start(corner)}
+                    onPointerMove={move}
+                    onPointerUp={end}
+                    onPointerCancel={end}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        <label className="zoom">
-          Масштаб
-          <input type="range" min="1" max="3" step="0.01" value={zoom} onChange={changeZoom} />
-        </label>
-        <p className="muted small center">Потяните картинку, чтобы выбрать видимую часть</p>
+        <p className="muted small center">Двигайте рамку и тяните её за углы</p>
 
         <div className="sheet-actions">
+          <button className="ghost" onClick={() => rect && setRect(fit(disp.w, disp.h))}>Весь кадр</button>
           <button className="ghost" onClick={onCancel}>Отмена</button>
-          <button className="primary narrow" disabled={busy || !nat || !box} onClick={confirm}>
+          <button className="primary narrow" disabled={busy || !rect} onClick={confirm}>
             {busy ? '…' : 'Готово'}
           </button>
         </div>

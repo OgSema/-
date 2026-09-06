@@ -1,7 +1,3 @@
-import { useEffect, useState } from 'react'
-import { api } from '../api'
-import { showAlert } from '../tg'
-
 const STATUS = { new: 'новый', confirmed: 'подтверждён', done: 'выдан', canceled: 'отменён' }
 const money = (n) => `${Number(n).toLocaleString('ru-RU')} ₽`
 
@@ -10,13 +6,8 @@ const Badge = ({ name, locked }) => (
   <span className={`tier tier-${name.toLowerCase()}${locked ? ' locked' : ''}`}>{name}</span>
 )
 
-export default function Profile() {
-  const [data, setData] = useState(null)
-
-  useEffect(() => {
-    api.profile().then(setData).catch((e) => showAlert(e.message))
-  }, [])
-
+/** Данные грузит App: вкладка переключается мгновенно, без спиннера. */
+export default function Profile({ data }) {
   if (!data) return <div className="screen"><div className="spinner" /></div>
 
   const { spent, tier, next, progress, left, tiers, orders } = data

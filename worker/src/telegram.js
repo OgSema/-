@@ -50,14 +50,19 @@ export const deleteMessage = (env, chatId, messageId) =>
 
 /** Фото храним в самом Telegram: возвращает file_id загруженной картинки. */
 export async function uploadPhoto(env, chatId, file) {
+  // sendPhoto пережимает картинку в JPEG и заливает прозрачный фон чёрным.
+  // Вырезанный на айфоне объект приходит PNG — его отправляем документом,
+  // там файл остаётся ровно таким, каким его загрузили.
+  const asDoc = file.type === 'image/png'
   const form = new FormData()
   form.append('chat_id', String(chatId))
-  form.append('photo', file, file.name || 'photo.jpg')
+  form.append(asDoc ? 'document' : 'photo', file, file.name || (asDoc ? 'photo.png' : 'photo.jpg'))
 
-  const res = await fetch(api(env, 'sendPhoto'), { method: 'POST', body: form })
+  const res = await fetch(api(env, asDoc ? 'sendDocument' : 'sendPhoto'), { method: 'POST', body: form })
   const data = await res.json()
   if (!data.ok) throw new Error(data.description || 'Telegram отказался принять фото')
 
+  if (asDoc) return data.result.document.file_id
   const sizes = data.result.photo
   return sizes[sizes.length - 1].file_id
 }

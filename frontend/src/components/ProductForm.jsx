@@ -1,15 +1,20 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { showAlert } from '../tg'
 import Cropper from './Cropper'
 
 const EMPTY = {
-  name: '', brand: '', flavor: '', weight: '', price: 0,
+  name: '', flavor: '', price: 0,
   description: '', photo_url: '', stock: 0, is_active: true, category_id: null,
 }
 
 export default function ProductForm({ product, categories, onClose, onSaved }) {
-  const [form, setForm] = useState({ ...EMPTY, ...product })
+  const [form, setForm] = useState(() => ({
+    ...EMPTY,
+    ...product,
+    // Товар вне раздела на витрину не попадёт, поэтому раздел выбран заранее.
+    category_id: product?.category_id ?? categories[0]?.id ?? '',
+  }))
   const [busy, setBusy] = useState(false)
   const [cropping, setCropping] = useState(null)   // файл, ожидающий кадрирования
 
@@ -24,6 +29,32 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
     const file = e.target.files?.[0]
     if (file) setCropping(file)
     e.target.value = ''
+  }
+
+  // Объект, вырезанный на айфоне из фона, кладётся в буфер обмена — принимаем
+  // его и обычной вставкой, и кнопкой: до «Фото» он может и не доехать.
+  useEffect(() => {
+    const onPaste = (e) => {
+      const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith('image/'))
+      if (item) setCropping(item.getAsFile())
+    }
+    document.addEventListener('paste', onPaste)
+    return () => document.removeEventListener('paste', onPaste)
+  }, [])
+
+  const pastePhoto = async () => {
+    try {
+      for (const item of await navigator.clipboard.read()) {
+        const type = item.types.find((t) => t.startsWith('image/'))
+        if (type) {
+          const blob = await item.getType(type)
+          return setCropping(new File([blob], `paste.${type.split('/')[1]}`, { type }))
+        }
+      }
+      showAlert('В буфере обмена нет картинки')
+    } catch {
+      showAlert('Буфер обмена недоступен. Сохраните вырезанный объект в «Фото» и выберите его файлом.')
+    }
   }
 
   const uploadCropped = async (file) => {
@@ -41,19 +72,18 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
 
   const save = async () => {
     if (!form.name.trim()) return showAlert('Укажите название')
+    if (!form.category_id) return showAlert('Выберите раздел')
     setBusy(true)
     try {
       const payload = {
         name: form.name.trim(),
-        brand: form.brand,
         flavor: form.flavor,
-        weight: form.weight,
         description: form.description,
         photo_url: form.photo_url,
         price: Number(form.price) || 0,
         stock: Number(form.stock) || 0,
         is_active: !!form.is_active,
-        category_id: form.category_id ? Number(form.category_id) : null,
+        category_id: Number(form.category_id),
       }
       if (form.id) await api.updateProduct(form.id, payload)
       else await api.createProduct(payload)
@@ -87,24 +117,25 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
           <label>Цена, ₽<input type="number" inputMode="numeric" value={form.price} onChange={set('price')} /></label>
           <label>Остаток<input type="number" inputMode="numeric" value={form.stock} onChange={set('stock')} /></label>
         </div>
-        <div className="row">
-          <label>Бренд<input value={form.brand} onChange={set('brand')} placeholder="Darkside" /></label>
-          <label>Фасовка<input value={form.weight} onChange={set('weight')} placeholder="100 г" /></label>
-        </div>
         <label>Вкус<input value={form.flavor} onChange={set('flavor')} placeholder="Supernova" /></label>
         <label>
-          Категория
+          Раздел
           <select value={form.category_id ?? ''} onChange={set('category_id')}>
-            <option value="">без категории</option>
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </label>
         <label>Описание<textarea rows="2" value={form.description} onChange={set('description')} /></label>
 
-        <label className="photo">
-          Фото
-          <input type="file" accept="image/*" onChange={pickPhoto} />
-        </label>
+        <div className="photo-pick">
+          <label className="ghost pick">
+            Выбрать фото
+            <input type="file" accept="image/*" onChange={pickPhoto} hidden />
+          </label>
+          <button className="ghost" onClick={pastePhoto}>Вставить из буфера</button>
+        </div>
+        <p className="muted small">
+          Вырезанный на айфоне объект вставляется из буфера — прозрачный фон сохранится.
+        </p>
         {form.photo_url && <img className="preview" src={form.photo_url} alt="" />}
 
         <label className="checkbox">

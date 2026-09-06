@@ -57,10 +57,10 @@ app.post('/api/categories', async (c) => {
 app.delete('/api/categories/:id', async (c) => {
   await requireAdmin(c)
   const id = Number(c.req.param('id'))
-  await c.env.DB.batch([
-    c.env.DB.prepare('UPDATE products SET category_id = NULL WHERE category_id = ?').bind(id),
-    c.env.DB.prepare('DELETE FROM categories WHERE id = ?').bind(id),
-  ])
+  // Осиротевший товар исчез бы с витрины молча — сначала разберите раздел.
+  const { n } = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM products WHERE category_id = ?').bind(id).first()
+  if (n > 0) throw new HttpError(409, `В разделе ещё ${n} товаров — перенесите или удалите их`)
+  await c.env.DB.prepare('DELETE FROM categories WHERE id = ?').bind(id).run()
   return c.json({ ok: true })
 })
 
@@ -74,16 +74,28 @@ app.get('/api/products', async (c) => {
 
 const productFields = (body) => [
   String(body.name || '').trim(),
-  body.category_id ? Number(body.category_id) : null,
+  Number(body.category_id),
   body.brand || '', body.flavor || '', body.weight || '',
   Number(body.price) || 0, body.description || '', body.photo_url || '',
   Number(body.stock) || 0, body.is_active === false ? 0 : 1,
 ]
 
+/**
+ * Витрина построена на разделах: товар без раздела не покажется никому,
+ * поэтому раздел обязателен и должен существовать.
+ */
+const checkProduct = async (db, body) => {
+  if (!String(body.name || '').trim()) throw new HttpError(400, 'Укажите название')
+  const id = Number(body.category_id)
+  if (!id) throw new HttpError(400, 'Выберите раздел')
+  const row = await db.prepare('SELECT id FROM categories WHERE id = ?').bind(id).first()
+  if (!row) throw new HttpError(400, 'Такого раздела нет')
+}
+
 app.post('/api/products', async (c) => {
   await requireAdmin(c)
   const body = await c.req.json()
-  if (!String(body.name || '').trim()) throw new HttpError(400, 'Укажите название')
+  await checkProduct(c.env.DB, body)
   const row = await c.env.DB.prepare(
     `INSERT INTO products (name, category_id, brand, flavor, weight, price, description, photo_url, stock, is_active)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
@@ -94,6 +106,7 @@ app.post('/api/products', async (c) => {
 app.patch('/api/products/:id', async (c) => {
   await requireAdmin(c)
   const body = await c.req.json()
+  await checkProduct(c.env.DB, body)
   const row = await c.env.DB.prepare(
     `UPDATE products SET name = ?, category_id = ?, brand = ?, flavor = ?, weight = ?,
        price = ?, description = ?, photo_url = ?, stock = ?, is_active = ?

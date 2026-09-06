@@ -6,6 +6,7 @@ import Catalog from './components/Catalog'
 import Cart from './components/Cart'
 import Profile from './components/Profile'
 import Admin from './components/Admin'
+import { AdminIcon, CartIcon, HomeIcon, UserIcon } from './components/Icons'
 
 /** Корзина переживает закрытие Mini App: Telegram выгружает страницу целиком. */
 const savedCart = () => {
@@ -17,6 +18,13 @@ const savedCart = () => {
   }
 }
 
+const TABS = [
+  { key: 'catalog', label: 'Магазин', Icon: HomeIcon },
+  { key: 'cart', label: 'Корзина', Icon: CartIcon },
+  { key: 'profile', label: 'Профиль', Icon: UserIcon },
+  { key: 'admin', label: 'Админ', Icon: AdminIcon, adminOnly: true },
+]
+
 export default function App() {
   const [user, setUser] = useState(null)
   const [error, setError] = useState('')
@@ -27,8 +35,8 @@ export default function App() {
   const [products, setProducts] = useState([])
   const [cart, setCart] = useState(savedCart)
   const [banners, setBanners] = useState([])
-  const [tier, setTier] = useState(null)              // уровень лояльности покупателя
-  const [shortcut, setShortcut] = useState('unsupported')   // ярлык на экране телефона
+  const [profile, setProfile] = useState(null)            // уровень и история заказов
+  const [shortcut, setShortcut] = useState('unsupported') // ярлык на экране телефона
 
   const load = useCallback(async () => {
     const [cats, items, ads] = await Promise.all([api.categories(), api.products(), api.banners()])
@@ -48,15 +56,21 @@ export default function App() {
     })
   }, [])
 
+  // Профиль живёт в App, а не во вкладке: иначе каждое переключение вкладки
+  // заново стучалось бы на сервер и показывало спиннер вместо готовых данных.
+  const loadProfile = useCallback(
+    () => api.profile().then(setProfile).catch(() => { /* профиль подождёт */ }),
+    [],
+  )
+
   useEffect(() => {
     initTelegram()
     api.me()
       .then(setUser)
       .then(load)
       .catch((e) => setError(e.message))
-    // Уровень нужен уже в корзине — показать скидку до открытия профиля.
-    api.profile().then((p) => setTier(p.tier)).catch(() => { /* профиль подождёт */ })
-  }, [load])
+    loadProfile()
+  }, [load, loadProfile])
 
   useEffect(() => {
     try {
@@ -84,6 +98,7 @@ export default function App() {
   if (!adult) return <AgeGate onConfirm={() => { localStorage.setItem('adult', '1'); setAdult(true) }} />
 
   const cartCount = Object.values(cart).reduce((a, b) => a + b, 0)
+  const tabs = TABS.filter((t) => !t.adminOnly || user.is_admin)
 
   return (
     <div className="app">
@@ -95,41 +110,47 @@ export default function App() {
         )}
       </header>
 
+      {/* Вкладки остаются в разметке и только прячутся: переключение мгновенное,
+          выбранная категория и набранный поиск не сбрасываются. */}
       <main className="content">
-        {tab === 'catalog' && (
+        <div className={tab === 'catalog' ? 'pane active' : 'pane'}>
           <Catalog products={products} categories={categories} banners={banners} cart={cart} onAdd={addToCart} />
-        )}
-        {tab === 'cart' && (
+        </div>
+        <div className={tab === 'cart' ? 'pane active' : 'pane'}>
           <Cart
             cart={cart}
             products={products}
             user={user}
-            tier={tier}
+            tier={profile?.tier}
             onQty={setQty}
-            onDone={() => { setCart({}); setTab('catalog'); load() }}
+            onDone={() => { setCart({}); setTab('catalog'); load(); loadProfile() }}
           />
-        )}
-        {tab === 'profile' && <Profile />}
-        {tab === 'admin' && user.is_admin && (
-          <Admin categories={categories} products={products} onChange={load} />
+        </div>
+        <div className={tab === 'profile' ? 'pane active' : 'pane'}>
+          <Profile data={profile} />
+        </div>
+        {user.is_admin && (
+          <div className={tab === 'admin' ? 'pane active' : 'pane'}>
+            <Admin categories={categories} products={products} onChange={load} />
+          </div>
         )}
       </main>
 
       <nav className="tabbar">
-        <button className={tab === 'catalog' ? 'active' : ''} onClick={() => setTab('catalog')}>
-          Каталог
-        </button>
-        <button className={tab === 'cart' ? 'active' : ''} onClick={() => setTab('cart')}>
-          Корзина{cartCount > 0 && <span className="dot">{cartCount}</span>}
-        </button>
-        <button className={tab === 'profile' ? 'active' : ''} onClick={() => setTab('profile')}>
-          Профиль
-        </button>
-        {user.is_admin && (
-          <button className={tab === 'admin' ? 'active' : ''} onClick={() => setTab('admin')}>
-            Админ
+        {tabs.map(({ key, label, Icon }) => (
+          <button
+            key={key}
+            className={tab === key ? 'active' : ''}
+            aria-label={label}
+            onClick={() => setTab(key)}
+          >
+            <span className="tab-icon">
+              <Icon />
+              {key === 'cart' && cartCount > 0 && <span className="dot">{cartCount}</span>}
+            </span>
+            <span className="tab-label">{label}</span>
           </button>
-        )}
+        ))}
       </nav>
     </div>
   )

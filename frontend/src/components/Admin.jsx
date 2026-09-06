@@ -13,7 +13,7 @@ export default function Admin({ categories, products, onChange }) {
   return (
     <>
       <div className="chips">
-        {[['products', 'Товары'], ['orders', 'Заказы'], ['categories', 'Категории'],
+        {[['products', 'Товары'], ['orders', 'Заказы'], ['categories', 'Разделы'],
           ['banners', 'Баннеры'], ['promos', 'Промокоды']].map(([key, label]) => (
           <button key={key} className={section === key ? 'chip active' : 'chip'} onClick={() => setSection(key)}>
             {label}
@@ -23,7 +23,9 @@ export default function Admin({ categories, products, onChange }) {
 
       {section === 'products' && (
         <>
-          <button className="primary" onClick={() => setEditing({})}>+ Добавить товар</button>
+          {categories.length === 0
+            ? <p className="muted center">Сначала заведите раздел во вкладке «Разделы»: товар вне раздела в витрину не попадёт.</p>
+            : <button className="primary" onClick={() => setEditing({})}>+ Добавить товар</button>}
           <ul className="admin-list">
             {products.map((p) => (
               <li key={p.id}>
@@ -139,7 +141,7 @@ function Categories({ categories, onChange }) {
   return (
     <>
       <div className="row">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Новая категория" />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Новый раздел" />
         <button className="primary narrow" onClick={add}>Добавить</button>
       </div>
       <ul className="admin-list">
@@ -196,9 +198,9 @@ function Banners({ onChange }) {
 
   return (
     <>
-      <label className="photo">
+      <label className="ghost pick">
         {busy ? 'Загружаем…' : '+ Добавить баннер'}
-        <input type="file" accept="image/*" disabled={busy} onChange={pick} />
+        <input type="file" accept="image/*" disabled={busy} onChange={pick} hidden />
       </label>
 
       {list.length === 0 && <p className="muted center">Баннеров пока нет</p>}
@@ -213,7 +215,7 @@ function Banners({ onChange }) {
       </ul>
 
       {cropping && (
-        <Cropper file={cropping} aspect={16 / 9} outWidth={1200}
+        <Cropper file={cropping} aspect={3} outWidth={1500}
           onCancel={() => setCropping(null)} onDone={add} />
       )}
     </>

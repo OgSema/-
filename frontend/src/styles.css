@@ -62,7 +62,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .app, .screen {
   --top-inset: calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px));
 }
-.app { min-height: 100vh; padding-top: var(--top-inset); padding-bottom: 72px; }
+.app { min-height: 100vh; padding-top: var(--top-inset); padding-bottom: calc(92px + env(safe-area-inset-bottom)); }
 
 .header {
   display: flex; align-items: center; gap: 8px;
@@ -81,6 +81,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 .content { padding: 0 16px 16px; }
+
+/* Вкладка остаётся в разметке и только прячется — переключение мгновенное.
+   Появление сдвигом и прозрачностью, чтобы смена не резала глаз. */
+.pane { display: none; }
+.pane.active { display: block; animation: pane-in .22s ease both; }
+@keyframes pane-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
 .screen {
   min-height: 100vh; display: flex; flex-direction: column;
@@ -144,7 +150,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border: 1px solid var(--border); box-shadow: var(--sheen);
   font-size: 14px; font-weight: 700; line-height: 1; cursor: pointer;
 }
-.card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: rgba(255, 255, 255, .05); }
 .no-photo {
   aspect-ratio: 1; display: grid; place-items: center;
   background: rgba(255, 255, 255, .04); color: var(--hint); font-size: 12px;
@@ -216,20 +222,35 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .row { display: flex; gap: 8px; align-items: flex-end; }
 .row > * { flex: 1; }
 
+/* Плавающая пилюля со значками. Подпись показывается только у активной
+   вкладки — остальные остаются опознавательными значками. */
 .tabbar {
-  position: fixed; left: 0; right: 0; bottom: 0;
-  display: flex; background: rgba(20, 20, 24, .55);
-  border-top: 1px solid var(--border); box-shadow: var(--sheen);
-  padding-bottom: max(env(safe-area-inset-bottom), var(--tg-safe-area-inset-bottom, 0px));
+  position: fixed; z-index: 5; left: 50%; transform: translateX(-50%);
+  bottom: calc(10px + max(env(safe-area-inset-bottom), var(--tg-safe-area-inset-bottom, 0px)));
+  display: flex; gap: 2px; padding: 6px;
+  background: rgba(18, 18, 22, .72);
+  border: 1px solid var(--border); border-radius: 999px;
+  box-shadow: var(--sheen), 0 10px 30px rgba(0, 0, 0, .5);
 }
 .tabbar button {
-  flex: 1; padding: 14px 0; border: none; background: none;
-  color: var(--hint); cursor: pointer; position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-width: 70px; padding: 9px 14px; border: none; border-radius: 999px;
+  background: none; color: var(--hint); cursor: pointer;
+  transition: color .2s ease, background-color .2s ease;
 }
-.tabbar button.active { color: var(--button); font-weight: 600; }
+.tabbar button.active { color: var(--button); background: rgba(255, 138, 31, .14); }
+.tabbar button.active svg { filter: drop-shadow(0 0 8px rgba(255, 138, 31, .65)); }
+.tab-icon { position: relative; display: block; height: 24px; }
+.tab-label {
+  font-size: 11px; font-weight: 600; line-height: 1;
+  max-height: 0; opacity: 0; overflow: hidden;
+  transition: max-height .2s ease, opacity .2s ease;
+}
+.tabbar button.active .tab-label { max-height: 14px; opacity: 1; }
 .dot {
-  margin-left: 5px; background: var(--button); color: var(--button-text);
-  border-radius: 999px; padding: 1px 6px; font-size: 11px;
+  position: absolute; top: -5px; right: -9px;
+  background: var(--button); color: var(--button-text);
+  border-radius: 999px; padding: 0 5px; font-size: 10px; font-weight: 700; line-height: 15px;
 }
 
 .sheet-backdrop {
@@ -245,8 +266,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .sheet h2 { margin: 0 0 12px; font-size: 18px; }
 .sheet label { display: block; font-size: 13px; color: var(--hint); }
-.sheet label.checkbox, .sheet label.photo { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
-.sheet label.checkbox input, .sheet label.photo input { width: auto; margin: 0; }
+.sheet label.checkbox { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+.sheet label.checkbox input { width: auto; margin: 0; }
+/* Родное поле файла тянет строку длинным «Файл не выбран» — прячем его,
+   нажатие ловит подпись-кнопка. */
+.pick { display: inline-flex; align-items: center; }
 .preview { width: 100%; max-height: 180px; object-fit: cover; border-radius: var(--radius); }
 .sheet-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 
@@ -335,10 +359,17 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .delivery-info { margin: 0; line-height: 1.5; }
 
-.primary.sticky {
-  position: sticky; bottom: calc(72px + env(safe-area-inset-bottom));
-  box-shadow: 0 6px 20px rgba(0, 0, 0, .55);
+/* Кнопка заказа зовёт нажать: неон вокруг неё разгорается и гаснет. Пульсирует
+   только тень — места она не занимает, поэтому вёрстка не дёргается. */
+@keyframes neon {
+  0%, 100% { box-shadow: var(--sheen), 0 0 0 1px rgba(255, 138, 31, .30), 0 0 14px rgba(255, 138, 31, .35); }
+  50%      { box-shadow: var(--sheen), 0 0 0 1px rgba(255, 178, 80, .75), 0 0 28px 7px rgba(255, 138, 31, .72); }
 }
+.primary.sticky {
+  position: sticky; bottom: calc(88px + env(safe-area-inset-bottom));
+  animation: neon 2.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) { .primary.sticky { animation: none; } }
 
 /* ---------- рекламная лента на главной ---------- */
 
@@ -347,13 +378,39 @@ button, input, select, textarea { font: inherit; color: inherit; }
   scroll-snap-type: x mandatory; scrollbar-width: none;
 }
 .banners::-webkit-scrollbar { display: none; }
+/* Лента — узкая полоса, а не пол-экрана: реклама подсказывает, но не заслоняет
+   товар. Нажимать не на что, поэтому картинка не ловит касания и не открывает
+   меню сохранения по долгому нажатию — лента остаётся перелистываемой. */
 .banner {
-  flex: 0 0 88%; aspect-ratio: 16 / 9; object-fit: cover;
+  /* min-width: 0 обязателен: иначе флекс раздувает картинку до её собственной
+     ширины, и полоса вырастает на пол-экрана вместо заданных 92%. */
+  flex: 0 0 92%; min-width: 0; aspect-ratio: 3 / 1; object-fit: cover;
   border-radius: var(--radius); scroll-snap-align: center;
   border: 1px solid var(--border); box-shadow: var(--lift);
+  pointer-events: none; user-select: none; -webkit-user-drag: none;
 }
 
-.banner-row img { width: 92px; height: 52px; object-fit: cover; border-radius: 8px; }
+.banner-row img { width: 96px; height: 32px; object-fit: cover; border-radius: 8px; }
+
+/* ---------- разделы на главной ---------- */
+
+.sections { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.section {
+  padding: 0; overflow: hidden; cursor: pointer; text-align: left; color: inherit;
+  display: flex; flex-direction: column;
+  background: var(--glass); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--sheen), var(--lift);
+  -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+}
+.section img, .section .no-photo {
+  width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block;
+  background: rgba(255, 255, 255, .05);
+}
+.section-name { padding: 10px 12px 0; font-size: 15px; font-weight: 600; }
+.section-count { padding: 2px 12px 10px; font-size: 12px; color: var(--hint); }
+.section-head { display: flex; align-items: center; gap: 10px; margin: 2px 0 12px; }
+.section-head h2 { margin: 0; font-size: 18px; }
+.back { padding: 6px 12px; font-size: 16px; line-height: 1; }
 
 /* ---------- промокод в корзине ---------- */
 
@@ -364,13 +421,31 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ---------- кадрирование ---------- */
 
-.crop-frame {
-  position: relative; width: 100%; overflow: hidden;
-  border-radius: 12px; background: #000; touch-action: none; cursor: grab;
+.crop-stage { display: flex; justify-content: center; }
+/* Обёртка облегает картинку, поэтому координаты рамки — это её же пиксели.
+   overflow прячет затемнение вокруг кадра, поэтому ручки сидят внутри рамки. */
+.crop-holder {
+  position: relative; line-height: 0; overflow: hidden;
+  border-radius: 12px; background: #000; touch-action: none;
 }
-.crop-frame img {
-  position: absolute; top: 50%; left: 50%;
-  max-width: none; user-select: none; pointer-events: none;
+.crop-holder img {
+  display: block; max-width: 100%; max-height: 52vh;
+  user-select: none; -webkit-user-drag: none;
 }
-.zoom { display: block; margin-top: 12px; }
-.zoom input { width: 100%; }
+.crop-box {
+  position: absolute; box-sizing: border-box;
+  border: 2px solid rgba(255, 255, 255, .95);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, .62);
+  cursor: move; touch-action: none;
+}
+.handle {
+  position: absolute; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--button); border: 2px solid rgba(255, 255, 255, .9);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .5); touch-action: none;
+}
+.handle.nw { left: 0; top: 0; }
+.handle.ne { right: 0; top: 0; }
+.handle.sw { left: 0; bottom: 0; }
+.handle.se { right: 0; bottom: 0; }
+
+.photo-pick { display: flex; align-items: center; gap: 10px; margin: 10px 0; flex-wrap: wrap; }
