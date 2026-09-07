@@ -414,28 +414,30 @@ function Promos() {
 
   return (
     <>
-      <label>Код<input value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="LETO10" /></label>
-      <div className="row">
+      <div className="promo-form">
+        <label>Код<input value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="LETO10" /></label>
+        <div className="row">
+          <label>
+            Тип
+            <select value={form.kind} onChange={set('kind')}>
+              <option value="percent">процент</option>
+              <option value="amount">рубли</option>
+            </select>
+          </label>
+          <label>
+            {form.kind === 'percent' ? 'Скидка, %' : 'Скидка, ₽'}
+            <input type="number" inputMode="numeric" value={form.value} onChange={set('value')} />
+          </label>
+        </div>
+        <div className="row">
+          <label>С<input type="date" value={form.starts_at} onChange={set('starts_at')} /></label>
+          <label>По<input type="date" value={form.ends_at} onChange={set('ends_at')} /></label>
+        </div>
         <label>
-          Тип
-          <select value={form.kind} onChange={set('kind')}>
-            <option value="percent">процент</option>
-            <option value="amount">рубли</option>
-          </select>
-        </label>
-        <label>
-          {form.kind === 'percent' ? 'Скидка, %' : 'Скидка, ₽'}
-          <input type="number" inputMode="numeric" value={form.value} onChange={set('value')} />
+          Лимит применений <span className="muted">(0 — без ограничения)</span>
+          <input type="number" inputMode="numeric" min="0" value={form.max_uses} onChange={set('max_uses')} />
         </label>
       </div>
-      <div className="row">
-        <label>С<input type="date" value={form.starts_at} onChange={set('starts_at')} /></label>
-        <label>По<input type="date" value={form.ends_at} onChange={set('ends_at')} /></label>
-      </div>
-      <label>
-        Лимит применений <span className="muted">(0 — без ограничения)</span>
-        <input type="number" inputMode="numeric" min="0" value={form.max_uses} onChange={set('max_uses')} />
-      </label>
       <button className="primary" disabled={busy} onClick={add}>{busy ? '…' : 'Создать код'}</button>
 
       {list.length === 0 && <p className="muted center">Промокодов пока нет</p>}

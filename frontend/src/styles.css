@@ -23,7 +23,8 @@
    вложенный backdrop-filter дорого стоит и подтормаживает прокрутку. */
 .card, .chip, .ghost, .primary, .cart li, .admin-list li,
 .tabbar, .sheet, .search,
-.row input, .sheet input, .sheet select, .sheet textarea {
+.row input, .sheet input, .sheet select, .sheet textarea,
+.promo input, .promo-form input, .promo-form select {
   -webkit-backdrop-filter: var(--blur);
   backdrop-filter: var(--blur);
 }
@@ -115,7 +116,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.search, .row input, .sheet input, .sheet select, .sheet textarea {
+.search, .row input, .sheet input, .sheet select, .sheet textarea,
+.promo input, .promo-form input, .promo-form select {
   width: 100%; padding: 11px 12px; margin: 6px 0;
   background: var(--glass); color: var(--text);
   border: 1px solid var(--border); border-radius: var(--radius);
@@ -424,7 +426,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---------- промокод в корзине ---------- */
 
 .promo { display: flex; gap: 8px; margin-top: 14px; }
-.promo input { flex: 1; text-transform: uppercase; }
+.promo input { flex: 1; margin: 0; text-transform: uppercase; }
+
+/* Форма промокода в админке: её поля стоят вне .row и .sheet, поэтому общее
+   стекло их не доставало — «Код», «Тип» и «Лимит» оставались серыми коробками,
+   а подписи липли к ним сбоку. Подпись сверху, поле во всю ширину — как в
+   «Ваших данных» в корзине. */
+.promo-form label { display: block; font-size: 13px; color: var(--hint); margin-top: 10px; }
+.promo-form input, .promo-form select { width: 100%; }
 .promo-ok { color: #6ee7a8; margin: 6px 0 0; }
 .total s { font-weight: 400; margin-right: 6px; }
 
