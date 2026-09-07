@@ -71,4 +71,6 @@ export const api = {
     request('/api/orders', { method: 'POST', body: { items, promo_code, ...delivery } }),
   orders: () => request('/api/orders'),
   setOrderStatus: (id, status) => request(`/api/orders/${id}`, { method: 'PATCH', body: { status } }),
+
+  stats: () => request('/api/stats'),
 }

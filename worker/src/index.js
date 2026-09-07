@@ -4,6 +4,7 @@ import { handleUpdate } from './bot/index.js'
 import { adminChat, notifyNewOrder } from './notify.js'
 import { createOrder, deliveryFields, effectiveDiscount, findPromo, listCategories, listProducts, orderItems, priceCart, productRow } from './shop.js'
 import { TIERS, loyaltyStatus, spentByUser, tierFor } from './loyalty.js'
+import { shopStats } from './stats.js'
 import { fetchPhoto, uploadPhoto } from './telegram.js'
 
 const app = new Hono()
@@ -291,6 +292,13 @@ app.patch('/api/orders/:id', async (c) => {
     .bind(status, Number(c.req.param('id'))).first()
   if (!order) throw new HttpError(404, 'Заказ не найден')
   return c.json(await withItems(c.env.DB, order))
+})
+
+// ---------- сводка ----------
+
+app.get('/api/stats', async (c) => {
+  await requireAdmin(c)
+  return c.json(await shopStats(c.env.DB))
 })
 
 // ---------- вебхук бота ----------

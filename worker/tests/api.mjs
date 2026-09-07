@@ -294,11 +294,44 @@ check('баннер удалён', !(await (await call('/api/banners', CUSTOMER)
 check('непустой раздел удалить нельзя',
   (await call(`/api/categories/${cat.id}`, ADMIN, { method: 'DELETE' })).status === 409)
 
+// 7б. Сводка админа
+check('покупатель не видит сводку', (await call('/api/stats', CUSTOMER)).status === 403)
+
+const statsItem = await (await call('/api/products', ADMIN, {
+  method: 'POST', body: JSON.stringify({ name: 'Сводочный ' + rnd(), price: 500, stock: 2, category_id: cat.id }),
+})).json()
+
+const statsBefore = await (await call('/api/stats', ADMIN)).json()
+check('в сводке есть все статусы',
+  ['new', 'confirmed', 'done', 'canceled'].every((k) => typeof statsBefore.statuses[k] === 'number'),
+  JSON.stringify(statsBefore.statuses))
+check('товар на исходе попал в сводку', statsBefore.low.some((p) => p.name === statsItem.name))
+
+const statsOrder = await (await call('/api/orders', CUSTOMER, {
+  method: 'POST', body: JSON.stringify({ items: [{ product_id: statsItem.id, qty: 1 }], ...DELIVERY }),
+})).json()
+const statsFresh = await (await call('/api/stats', ADMIN)).json()
+check('новый заказ виден в сводке',
+  statsFresh.statuses.new === statsBefore.statuses.new + 1 && statsFresh.week.orders === statsBefore.week.orders + 1,
+  `новых ${statsFresh.statuses.new}, за неделю ${statsFresh.week.orders}`)
+// Выкуп — только подтверждённые и выданные, иначе брошенная корзина
+// раздувала бы выручку.
+check('новый заказ выручку не поднимает', statsFresh.week.revenue === statsBefore.week.revenue,
+  `${statsBefore.week.revenue} → ${statsFresh.week.revenue}`)
+
+await call(`/api/orders/${statsOrder.id}`, ADMIN, { method: 'PATCH', body: JSON.stringify({ status: 'done' }) })
+const statsAfter = await (await call('/api/stats', ADMIN)).json()
+check('выданный заказ поднял выручку', statsAfter.week.revenue === statsBefore.week.revenue + statsOrder.total,
+  `${statsBefore.week.revenue} + ${statsOrder.total} = ${statsAfter.week.revenue}`)
+check('топ отсортирован по количеству',
+  statsAfter.top.every((t, i, a) => i === 0 || a[i - 1].qty >= t.qty), JSON.stringify(statsAfter.top))
+check('покупатели посчитаны', statsAfter.customers > 0, String(statsAfter.customers))
+
 // 8. Уборка тестовых данных
 for (const id of [promo.id, expired.id, bigOff.id, limited.id, weak.id, strong.id]) {
   await call(`/api/promos/${id}`, ADMIN, { method: 'DELETE' })
 }
-for (const id of [created.id, hidden.id, promoItem.id, loyaltyItem.id, vipItem.id]) {
+for (const id of [created.id, hidden.id, promoItem.id, loyaltyItem.id, vipItem.id, statsItem.id]) {
   await call(`/api/products/${id}`, ADMIN, { method: 'DELETE' })
 }
 check('опустевший раздел удалён',

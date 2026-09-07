@@ -7,19 +7,21 @@ import Cropper from './Cropper'
 const STATUS = { new: 'новый', confirmed: 'подтверждён', done: 'выдан', canceled: 'отменён' }
 
 export default function Admin({ categories, products, onChange }) {
-  const [section, setSection] = useState('products')
+  const [section, setSection] = useState('summary')
   const [editing, setEditing] = useState(null)   // товар или {} для нового
 
   return (
     <>
       <div className="chips">
-        {[['products', 'Товары'], ['orders', 'Заказы'], ['categories', 'Разделы'],
-          ['banners', 'Баннеры'], ['promos', 'Промокоды']].map(([key, label]) => (
+        {[['summary', 'Сводка'], ['products', 'Товары'], ['orders', 'Заказы'],
+          ['categories', 'Разделы'], ['banners', 'Баннеры'], ['promos', 'Промокоды']].map(([key, label]) => (
           <button key={key} className={section === key ? 'chip active' : 'chip'} onClick={() => setSection(key)}>
             {label}
           </button>
         ))}
       </div>
+
+      {section === 'summary' && <Summary onGoToOrders={() => setSection('orders')} />}
 
       {section === 'products' && (
         <>
@@ -57,6 +59,97 @@ export default function Admin({ categories, products, onChange }) {
         />
       )}
     </>
+  )
+}
+
+const money = (n) => `${n.toLocaleString('ru-RU')} ₽`
+
+/** Русская форма числа: 1 заказ, 2 заказа, 5 заказов. */
+const plural = (n, one, few, many) => {
+  if (n % 100 >= 11 && n % 100 <= 14) return many
+  const last = n % 10
+  return last === 1 ? one : last >= 2 && last <= 4 ? few : many
+}
+
+const orderCount = (n) => `${n} ${plural(n, 'заказ', 'заказа', 'заказов')}`
+
+/** Первый экран админки: заказы, которые ждут ответа, выручка и что кончается. */
+function Summary({ onGoToOrders }) {
+  const [data, setData] = useState(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => { api.stats().then(setData).catch((e) => setError(e.message)) }, [])
+
+  if (error) return <p className="muted center">{error}</p>
+  if (!data) return <p className="muted center">Считаем…</p>
+
+  const { statuses, week, month, top, customers, low } = data
+
+  return (
+    <div className="summary">
+      <button className={statuses.new > 0 ? 'card wait active' : 'card wait'} onClick={onGoToOrders}>
+        <b>{statuses.new}</b>
+        <span>
+          {statuses.new > 0
+            ? `${plural(statuses.new, 'заказ ждёт', 'заказа ждут', 'заказов ждут')} ответа`
+            : 'необработанных заказов нет'}
+        </span>
+      </button>
+
+      <div className="stats-grid">
+        <div className="card stat">
+          <span className="muted small">За неделю</span>
+          <b>{money(week.revenue)}</b>
+          <span className="muted small">{orderCount(week.orders)}</span>
+        </div>
+        <div className="card stat">
+          <span className="muted small">За месяц</span>
+          <b>{money(month.revenue)}</b>
+          <span className="muted small">{orderCount(month.orders)}</span>
+        </div>
+        <div className="card stat">
+          <span className="muted small">Покупателей</span>
+          <b>{customers}</b>
+          <span className="muted small">за всё время</span>
+        </div>
+        <div className="card stat">
+          <span className="muted small">Выдано</span>
+          <b>{statuses.done}</b>
+          <span className="muted small">отменено {statuses.canceled}</span>
+        </div>
+      </div>
+
+      <h3>Чаще всего берут <span className="muted small">за 30 дней</span></h3>
+      {top.length === 0
+        ? <p className="muted center">Выкупленных заказов за месяц не было</p>
+        : (
+          <ul className="admin-list">
+            {top.map((t) => (
+              <li key={t.name}>
+                <div className="cart-info">
+                  <strong>{t.name}</strong>
+                  <span className="muted small">{money(t.sum)}</span>
+                </div>
+                <span className="qty">{t.qty} шт</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+      <h3>Заканчивается <span className="muted small">остаток {data.low_stock} и меньше</span></h3>
+      {low.length === 0
+        ? <p className="muted center">Всё в наличии</p>
+        : (
+          <ul className="admin-list">
+            {low.map((p) => (
+              <li key={p.name}>
+                <div className="cart-info"><strong>{p.name}</strong></div>
+                <span className={p.stock === 0 ? 'qty out' : 'qty'}>{p.stock} шт</span>
+              </li>
+            ))}
+          </ul>
+        )}
+    </div>
   )
 }
 
