@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS products (
   flavor      TEXT NOT NULL DEFAULT '',
   weight      TEXT NOT NULL DEFAULT '',
   price       INTEGER NOT NULL DEFAULT 0,
+  cost        INTEGER NOT NULL DEFAULT 0,   -- закупка, только для админа
   description TEXT NOT NULL DEFAULT '',
   photo_url   TEXT NOT NULL DEFAULT '',
   stock       INTEGER NOT NULL DEFAULT 0,
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS order_items (
   product_id INTEGER,
   name       TEXT NOT NULL,
   price      INTEGER NOT NULL,
+  cost       INTEGER NOT NULL DEFAULT 0,   -- закупка на момент продажи
   qty        INTEGER NOT NULL
 );
 

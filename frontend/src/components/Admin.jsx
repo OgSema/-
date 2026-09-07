@@ -83,7 +83,7 @@ function Summary({ onGoToOrders }) {
   if (error) return <p className="muted center">{error}</p>
   if (!data) return <p className="muted center">Считаем…</p>
 
-  const { statuses, week, month, top, customers, low } = data
+  const { statuses, week, month, top, customers, low, stock } = data
 
   return (
     <div className="summary">
@@ -101,11 +101,17 @@ function Summary({ onGoToOrders }) {
           <span className="muted small">За неделю</span>
           <b>{money(week.revenue)}</b>
           <span className="muted small">{orderCount(week.orders)}</span>
+          <span className={week.profit < 0 ? 'profit minus small' : 'profit small'}>
+            прибыль {money(week.profit)}
+          </span>
         </div>
         <div className="card stat">
           <span className="muted small">За месяц</span>
           <b>{money(month.revenue)}</b>
           <span className="muted small">{orderCount(month.orders)}</span>
+          <span className={month.profit < 0 ? 'profit minus small' : 'profit small'}>
+            прибыль {money(month.profit)}
+          </span>
         </div>
         <div className="card stat">
           <span className="muted small">Покупателей</span>
@@ -116,6 +122,14 @@ function Summary({ onGoToOrders }) {
           <span className="muted small">Выдано</span>
           <b>{statuses.done}</b>
           <span className="muted small">отменено {statuses.canceled}</span>
+        </div>
+
+        <div className="card stat wide">
+          <span className="muted small">Сейчас в товаре</span>
+          <b>{money(stock.spent)}</b>
+          <span className="muted small">
+            {stock.items} шт · в продаже на {money(stock.retail)}
+          </span>
         </div>
       </div>
 

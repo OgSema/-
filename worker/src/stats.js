@@ -11,13 +11,20 @@ const COUNTED = "('confirmed', 'done')"
 const LOW_STOCK = 3
 
 export async function shopStats(db) {
+  // Прибыль считается по снимку закупки в позициях заказа, а скидка вычитается
+  // целиком с заказа: в позициях лежит цена до скидки, иначе прибыль завышалась
+  // бы ровно на скидку.
   const period = (since) => db.prepare(
     `SELECT COUNT(*) AS orders,
-            COALESCE(SUM(CASE WHEN status IN ${COUNTED} THEN total ELSE 0 END), 0) AS revenue
+            COALESCE(SUM(CASE WHEN status IN ${COUNTED} THEN total ELSE 0 END), 0) AS revenue,
+            COALESCE(SUM(CASE WHEN status IN ${COUNTED} THEN
+              (SELECT COALESCE(SUM((i.price - i.cost) * i.qty), 0)
+                 FROM order_items i WHERE i.order_id = orders.id) - discount
+              ELSE 0 END), 0) AS profit
        FROM orders WHERE created_at >= datetime('now', ?)`,
   ).bind(since)
 
-  const [statuses, week, month, top, customers, low] = await db.batch([
+  const [statuses, week, month, top, customers, low, stock] = await db.batch([
     db.prepare('SELECT status, COUNT(*) AS n FROM orders GROUP BY status'),
     period('-7 days'),
     period('-30 days'),
@@ -32,6 +39,14 @@ export async function shopStats(db) {
       `SELECT name, stock FROM products
         WHERE is_active = 1 AND stock <= ? ORDER BY stock, name LIMIT 10`,
     ).bind(LOW_STOCK),
+    // Сколько денег лежит на полке: по закупке — вложено, по цене — если всё
+    // продать. Скрытые позиции не считаем, их сейчас продать нельзя.
+    db.prepare(
+      `SELECT COALESCE(SUM(cost * stock), 0) AS spent,
+              COALESCE(SUM(price * stock), 0) AS retail,
+              COALESCE(SUM(stock), 0) AS items
+         FROM products WHERE is_active = 1`,
+    ),
   ])
 
   return {
@@ -44,5 +59,6 @@ export async function shopStats(db) {
     customers: customers.results[0].n,
     low: low.results,
     low_stock: LOW_STOCK,
+    stock: stock.results[0],
   }
 }

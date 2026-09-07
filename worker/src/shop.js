@@ -3,7 +3,14 @@
 import { HttpError } from './auth.js'
 import { loyaltyDiscount, spentByUser, tierFor } from './loyalty.js'
 
-export const productRow = (row) => ({ ...row, is_active: !!row.is_active })
+/**
+ * Закупка — цифра для отчётности админа. Покупателю её отдавать нельзя,
+ * поэтому из ответа она вырезается всем, кроме админа.
+ */
+export const productRow = (row, admin = false) => {
+  const { cost, ...rest } = row
+  return { ...rest, is_active: !!row.is_active, ...(admin ? { cost } : {}) }
+}
 
 export const listCategories = async (db) =>
   (await db.prepare('SELECT * FROM categories ORDER BY sort, name').all()).results
@@ -13,7 +20,7 @@ export const listProducts = async (db, { all = false, categoryId = null } = {}) 
   if (categoryId) where.push(`category_id = ${Number(categoryId)}`)
   const { results } = await db
     .prepare(`SELECT * FROM products WHERE ${where.join(' AND ')} ORDER BY created_at DESC, id DESC`).all()
-  return results.map(productRow)
+  return results.map((row) => productRow(row, all))
 }
 
 export const getProduct = async (db, id) =>
@@ -92,7 +99,7 @@ export async function priceCart(db, requested) {
     if (!row || !row.is_active) throw new HttpError(400, `Товар ${line.product_id} недоступен`)
     if (row.stock < qty) throw new HttpError(409, `«${row.name}»: осталось ${row.stock} шт.`)
 
-    lines.push({ product_id: row.id, name: row.name, price: row.price, qty })
+    lines.push({ product_id: row.id, name: row.name, price: row.price, cost: row.cost, qty })
     total += row.price * qty
   }
   return { lines, total }
@@ -144,8 +151,8 @@ export async function createOrder(env, user, requested, promoCode = '', delivery
   const writes = await env.DB.batch(lines.flatMap((l) => [
     env.DB.prepare('UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?')
       .bind(l.qty, l.product_id, l.qty),
-    env.DB.prepare('INSERT INTO order_items (order_id, product_id, name, price, qty) VALUES (?, ?, ?, ?, ?)')
-      .bind(order.id, l.product_id, l.name, l.price, l.qty),
+    env.DB.prepare('INSERT INTO order_items (order_id, product_id, name, price, cost, qty) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(order.id, l.product_id, l.name, l.price, l.cost, l.qty),
   ]))
 
   const soldOut = writes.filter((_, i) => i % 2 === 0).some((r) => r.meta.changes === 0)
@@ -158,5 +165,5 @@ export async function createOrder(env, user, requested, promoCode = '', delivery
     throw new HttpError(409, 'Товар разобрали, пока вы оформляли заказ')
   }
 
-  return { ...order, items: lines, subtotal: total }
+  return { ...order, items: lines.map(({ cost, ...line }) => line), subtotal: total }
 }

@@ -65,10 +65,13 @@ check('товар в несуществующий раздел отклонён'
   method: 'POST', body: JSON.stringify({ name: 'Ничей', price: 10, stock: 1, category_id: 10 ** 9 }),
 })).status === 400)
 
-const body = JSON.stringify({ name: 'Проверочный табак', price: 1200, stock: 2, category_id: cat.id })
+const body = JSON.stringify({ name: 'Проверочный табак', price: 1200, cost: 700, stock: 2, category_id: cat.id })
 check('покупатель не может создать товар', (await call('/api/products', CUSTOMER, { method: 'POST', body })).status === 403)
 const created = await (await call('/api/products', ADMIN, { method: 'POST', body })).json()
 check('админ создал товар', created.id > 0, JSON.stringify(created).slice(0, 90))
+check('закупка сохранена и видна админу', created.cost === 700, String(created.cost))
+check('закупка не уходит покупателю',
+  (await (await call('/api/products', CUSTOMER)).json()).every((p) => p.cost === undefined))
 
 const hidden = await (await call('/api/products', ADMIN, {
   method: 'POST', body: JSON.stringify({ name: 'Скрытый', price: 10, stock: 0, category_id: cat.id }),
@@ -298,7 +301,7 @@ check('непустой раздел удалить нельзя',
 check('покупатель не видит сводку', (await call('/api/stats', CUSTOMER)).status === 403)
 
 const statsItem = await (await call('/api/products', ADMIN, {
-  method: 'POST', body: JSON.stringify({ name: 'Сводочный ' + rnd(), price: 500, stock: 2, category_id: cat.id }),
+  method: 'POST', body: JSON.stringify({ name: 'Сводочный ' + rnd(), price: 500, cost: 200, stock: 2, category_id: cat.id }),
 })).json()
 
 const statsBefore = await (await call('/api/stats', ADMIN)).json()
@@ -326,6 +329,20 @@ check('выданный заказ поднял выручку', statsAfter.week
 check('топ отсортирован по количеству',
   statsAfter.top.every((t, i, a) => i === 0 || a[i - 1].qty >= t.qty), JSON.stringify(statsAfter.top))
 check('покупатели посчитаны', statsAfter.customers > 0, String(statsAfter.customers))
+// 500 продали, 200 закупка — 300 прибыли, скидок на этом заказе не было.
+check('прибыль считается по закупке', statsAfter.week.profit === statsBefore.week.profit + 300,
+  `${statsBefore.week.profit} → ${statsAfter.week.profit}`)
+check('состав заказа без закупки',
+  (await (await call('/api/profile', CUSTOMER)).json()).orders[0].items.every((i) => i.cost === undefined))
+
+// Закупка снимается в момент продажи: переторговались — старая прибыль стоит.
+await call(`/api/products/${statsItem.id}`, ADMIN, {
+  method: 'PATCH', body: JSON.stringify({ name: statsItem.name, price: 500, cost: 450, stock: 1, category_id: cat.id }),
+})
+const reprised = await (await call('/api/stats', ADMIN)).json()
+check('смена закупки не переписывает прошлую прибыль', reprised.week.profit === statsAfter.week.profit,
+  `${statsAfter.week.profit} → ${reprised.week.profit}`)
+check('склад считается по закупке', reprised.stock.spent >= 450, JSON.stringify(reprised.stock))
 
 // 8. Уборка тестовых данных
 for (const id of [promo.id, expired.id, bigOff.id, limited.id, weak.id, strong.id]) {

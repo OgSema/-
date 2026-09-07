@@ -485,6 +485,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
 .stat { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; }
 .stat b { font-size: 19px; }
+/* Стоимость склада — одна строка на всю ширину: это итог, а не пара к соседу. */
+.stat.wide { grid-column: 1 / -1; }
+.profit { color: #6ee7a8; }
+.profit.minus { color: #ff8080; }
 
 .summary .qty { font-size: 13px; color: var(--hint); white-space: nowrap; }
 .summary .qty.out { color: #ff8080; }

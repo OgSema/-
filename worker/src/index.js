@@ -97,7 +97,7 @@ const productFields = (body) => [
   String(body.name || '').trim(),
   Number(body.category_id),
   body.brand || '', body.flavor || '', body.weight || '',
-  Number(body.price) || 0, body.description || '', body.photo_url || '',
+  Number(body.price) || 0, Number(body.cost) || 0, body.description || '', body.photo_url || '',
   Number(body.stock) || 0, body.is_active === false ? 0 : 1,
 ]
 
@@ -118,10 +118,10 @@ app.post('/api/products', async (c) => {
   const body = await c.req.json()
   await checkProduct(c.env.DB, body)
   const row = await c.env.DB.prepare(
-    `INSERT INTO products (name, category_id, brand, flavor, weight, price, description, photo_url, stock, is_active)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+    `INSERT INTO products (name, category_id, brand, flavor, weight, price, cost, description, photo_url, stock, is_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
   ).bind(...productFields(body)).first()
-  return c.json(product(row))
+  return c.json(product(row, true))
 })
 
 app.patch('/api/products/:id', async (c) => {
@@ -130,11 +130,11 @@ app.patch('/api/products/:id', async (c) => {
   await checkProduct(c.env.DB, body)
   const row = await c.env.DB.prepare(
     `UPDATE products SET name = ?, category_id = ?, brand = ?, flavor = ?, weight = ?,
-       price = ?, description = ?, photo_url = ?, stock = ?, is_active = ?
+       price = ?, cost = ?, description = ?, photo_url = ?, stock = ?, is_active = ?
      WHERE id = ? RETURNING *`,
   ).bind(...productFields(body), Number(c.req.param('id'))).first()
   if (!row) throw new HttpError(404, 'Товар не найден')
-  return c.json(product(row))
+  return c.json(product(row, true))
 })
 
 app.delete('/api/products/:id', async (c) => {

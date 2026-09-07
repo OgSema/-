@@ -3,9 +3,11 @@ import { api } from '../api'
 import { showAlert } from '../tg'
 import Cropper from './Cropper'
 
+// Числа пустые, а не нулевые: ноль в поле нового товара пришлось бы стирать
+// перед каждым вводом. Пустое поле сохраняется тем же нулём.
 const EMPTY = {
-  name: '', flavor: '', price: 0,
-  description: '', photo_url: '', stock: 0, is_active: true, category_id: null,
+  name: '', flavor: '', price: '', cost: '',
+  description: '', photo_url: '', stock: '', is_active: true, category_id: null,
 }
 
 export default function ProductForm({ product, categories, onClose, onSaved }) {
@@ -81,6 +83,7 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
         description: form.description,
         photo_url: form.photo_url,
         price: Number(form.price) || 0,
+        cost: Number(form.cost) || 0,
         stock: Number(form.stock) || 0,
         is_active: !!form.is_active,
         category_id: Number(form.category_id),
@@ -114,9 +117,16 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
 
         <label>Название<input value={form.name} onChange={set('name')} placeholder="Darkside Supernova" /></label>
         <div className="row">
-          <label>Цена, ₽<input type="number" inputMode="numeric" value={form.price} onChange={set('price')} /></label>
-          <label>Остаток<input type="number" inputMode="numeric" value={form.stock} onChange={set('stock')} /></label>
+          <label>Цена, ₽<input type="number" inputMode="numeric" placeholder="0" value={form.price} onChange={set('price')} /></label>
+          <label>Остаток<input type="number" inputMode="numeric" placeholder="0" value={form.stock} onChange={set('stock')} /></label>
         </div>
+        <label>
+          Закупка, ₽ <span className="muted">(только для вас)</span>
+          <input type="number" inputMode="numeric" placeholder="0" value={form.cost} onChange={set('cost')} />
+        </label>
+        <p className="muted small">
+          Покупателю закупка не видна. По ней считаются прибыль и стоимость склада в сводке.
+        </p>
         <label>Вкус<input value={form.flavor} onChange={set('flavor')} placeholder="Supernova" /></label>
         <label>
           Раздел
