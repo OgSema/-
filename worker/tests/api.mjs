@@ -1,9 +1,29 @@
 import crypto from 'node:crypto'
+import fs from 'node:fs'
 
 const BASE = 'http://localhost:8787'
 const TOKEN = '111111:TEST-TOKEN'
-const ADMIN = Number(process.env.ADMIN_ID || 7500381413)
+const LOG = process.env.TG_LOG || '/tmp/tgcalls.jsonl'
+// Админов может быть несколько: список берём из конфига, иначе тест
+// устаревает при каждом добавлении нового.
+const ADMIN_IDS = fs
+  .readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8')
+  .match(/ADMIN_IDS\s*=\s*"([^"]+)"/)[1]
+  .split(',').map((s) => s.trim()).filter(Boolean)
+const ADMIN = Number(process.env.ADMIN_ID || ADMIN_IDS[0])
 const CUSTOMER = 800000 + Math.floor(Math.random() * 100000)
+
+// Исходящие вызовы бота ловит мок (tests/mock.mjs). Журнал общий с bot.mjs,
+// поэтому читаем только то, что дописано с прошлого взгляда.
+let seen = 0
+const tgCalls = () => {
+  const all = (() => {
+    try { return fs.readFileSync(LOG, 'utf8').trim().split('\n').filter(Boolean) } catch { return [] }
+  })().map((l) => JSON.parse(l))
+  const fresh = all.slice(seen)
+  seen = all.length
+  return fresh
+}
 
 const initData = (id, username = '') => {
   const f = {
@@ -35,7 +55,9 @@ const check = (label, ok, detail = '') => {
 // 1. Подпись
 check('битая подпись отклонена', (await call('/api/me', 'user=%7B%22id%22%3A1%7D&hash=deadbeef')).status === 401)
 check('без заголовка отклонён', (await fetch(BASE + '/api/me', { headers: { Authorization: 'x' } })).status === 401)
-check('админ узнан по подписи', (await (await call('/api/me', ADMIN)).json()).is_admin === true)
+for (const id of ADMIN_IDS) {
+  check(`админ ${id} узнан по подписи`, (await (await call('/api/me', Number(id))).json()).is_admin === true)
+}
 check('обычный юзер не админ', (await (await call('/api/me', CUSTOMER)).json()).is_admin === false)
 
 // 2. Права
@@ -83,6 +105,7 @@ check('товар без остатка скрыт от покупателя', !
 // Имя в форме нарочно отличается от имени в initData («Иван»).
 const DELIVERY = { name: 'Пётр', comment: 'после 18:00' }
 
+tgCalls()
 const orderRes = await call('/api/orders', CUSTOMER, {
   method: 'POST', username: 'ivan', body: JSON.stringify({ items: [{ product_id: created.id, qty: 2 }], ...DELIVERY }),
 })
@@ -93,6 +116,11 @@ check('состав заказа сохранён', order.items?.length === 1)
 check('имя и комментарий сохранены',
   order.customer_name === DELIVERY.name && order.comment === DELIVERY.comment,
   `${order.customer_name} / ${order.comment}`)
+
+// Заказ уходит каждому админу, а не только первому в списке.
+const notified = tgCalls().filter((c) => c.method === 'sendMessage').map((c) => String(c.payload.chat_id))
+check('заказ ушёл каждому админу', ADMIN_IDS.every((id) => notified.includes(id)), notified.join(', '))
+check('покупатель получил подтверждение', notified.includes(String(CUSTOMER)), notified.join(', '))
 
 const again = await call('/api/orders', CUSTOMER, {
   method: 'POST', body: JSON.stringify({ items: [{ product_id: created.id, qty: 1 }], ...DELIVERY }),

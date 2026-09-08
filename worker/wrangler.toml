@@ -16,7 +16,7 @@ not_found_handling = "single-page-application"
 
 [vars]
 SHOP_NAME = "MoscowTab"
-ADMIN_IDS = "7500381413"
+ADMIN_IDS = "7500381413,1141664845"
 ORDER_CHAT_ID = ""
 # Адрес Mini App: бот ставит кнопку «Магазин» каждому при /start.
 # Имя trydokli.ru фильтруется по SNI у российских провайдеров — вместе со всеми
