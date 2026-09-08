@@ -62,7 +62,9 @@ export default function Catalog({ products, categories, banners = [], cart, onAd
   const grid = (items) => (
     <div className="grid">
       {items.map((p) => (
-        <article key={p.id} className="card">
+        // Закончившийся товар остаётся на витрине, но приглушён и перечёркнут
+        // печатью: ассортимент виден, а купить нечего.
+        <article key={p.id} className={p.stock > 0 ? 'card' : 'card sold-out'}>
           <button className="info" aria-label="Подробнее" onClick={() => setDetail(p)}>!</button>
           {p.photo_url ? (
             <img src={p.photo_url} alt={p.name} loading="lazy" />
@@ -82,7 +84,7 @@ export default function Catalog({ products, categories, banners = [], cart, onAd
                 {cart[p.id] ? `в корзине · ${cart[p.id]}` : 'В корзину'}
               </button>
             </div>
-            {p.stock <= 3 && <p className="left">осталось {p.stock} шт.</p>}
+            {p.stock > 0 && p.stock <= 3 && <p className="left">осталось {p.stock} шт.</p>}
           </div>
         </article>
       ))}

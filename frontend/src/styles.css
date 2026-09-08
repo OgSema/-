@@ -144,6 +144,19 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border: 1px solid var(--border); box-shadow: var(--sheen), var(--lift);
 }
 
+/* Товар закончился: карточка вместе с фото тускнеет, а поверх ложится
+   печать. Гасим содержимое, а не саму карточку, иначе выцвела бы и надпись. */
+.card.sold-out > * { opacity: .38; }
+.card.sold-out img { filter: grayscale(.5); }
+.card.sold-out::after {
+  content: 'SOLD OUT';
+  position: absolute; inset: 0; display: grid; place-items: center;
+  transform: rotate(-45deg);
+  color: var(--button); font-size: 15px; font-weight: 800; letter-spacing: .2em;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, .75);
+  pointer-events: none;   /* кнопка «!» под печатью должна открываться */
+}
+
 /* Кружок «!» поверх фото: подробности товара, чтобы карточка в сетке
    оставалась короткой, а описание не съедало место. */
 .info {

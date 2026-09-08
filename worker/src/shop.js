@@ -16,7 +16,10 @@ export const listCategories = async (db) =>
   (await db.prepare('SELECT * FROM categories ORDER BY sort, name').all()).results
 
 export const listProducts = async (db, { all = false, categoryId = null } = {}) => {
-  const where = [all ? '1=1' : 'is_active = 1 AND stock > 0']
+  // Закончившийся товар с витрины не убираем: он показывается помеченным
+  // SOLD OUT, чтобы покупатель видел ассортимент целиком. Скрывает позицию
+  // только снятая галочка «в продаже».
+  const where = [all ? '1=1' : 'is_active = 1']
   if (categoryId) where.push(`category_id = ${Number(categoryId)}`)
   const { results } = await db
     .prepare(`SELECT * FROM products WHERE ${where.join(' AND ')} ORDER BY created_at DESC, id DESC`).all()

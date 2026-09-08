@@ -95,15 +95,26 @@ check('закупка сохранена и видна админу', created.co
 check('закупка не уходит покупателю',
   (await (await call('/api/products', CUSTOMER)).json()).every((p) => p.cost === undefined))
 
+// Закончившийся товар остаётся на витрине под печатью SOLD OUT, а прячет
+// позицию только снятая галочка «в продаже».
+const soldOut = await (await call('/api/products', ADMIN, {
+  method: 'POST', body: JSON.stringify({ name: 'Кончился', price: 10, stock: 0, category_id: cat.id }),
+})).json()
 const hidden = await (await call('/api/products', ADMIN, {
-  method: 'POST', body: JSON.stringify({ name: 'Скрытый', price: 10, stock: 0, category_id: cat.id }),
+  method: 'POST', body: JSON.stringify({ name: 'Скрытый', price: 10, stock: 5, is_active: false, category_id: cat.id }),
 })).json()
 const visible = (await (await call('/api/products', CUSTOMER)).json()).map((p) => p.id)
-check('товар без остатка скрыт от покупателя', !visible.includes(hidden.id) && visible.includes(created.id))
+check('товар без остатка виден покупателю', visible.includes(soldOut.id))
+check('снятый с продажи товар покупателю не виден',
+  !visible.includes(hidden.id) && visible.includes(created.id))
 
 // 3. Заказ
 // Имя в форме нарочно отличается от имени в initData («Иван»).
 const DELIVERY = { name: 'Пётр', comment: 'после 18:00' }
+
+check('заказать то, чего нет, нельзя', (await call('/api/orders', CUSTOMER, {
+  method: 'POST', body: JSON.stringify({ items: [{ product_id: soldOut.id, qty: 1 }], ...DELIVERY }),
+})).status === 409)
 
 tgCalls()
 const orderRes = await call('/api/orders', CUSTOMER, {
@@ -411,7 +422,7 @@ check('заход админа не считается', afterAdmin.today === af
 for (const id of [promo.id, expired.id, bigOff.id, limited.id, weak.id, strong.id]) {
   await call(`/api/promos/${id}`, ADMIN, { method: 'DELETE' })
 }
-for (const id of [created.id, hidden.id, promoItem.id, loyaltyItem.id, vipItem.id, statsItem.id]) {
+for (const id of [created.id, hidden.id, soldOut.id, promoItem.id, loyaltyItem.id, vipItem.id, statsItem.id]) {
   await call(`/api/products/${id}`, ADMIN, { method: 'DELETE' })
 }
 check('опустевший раздел удалён',

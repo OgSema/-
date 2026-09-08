@@ -92,7 +92,7 @@ app.delete('/api/categories/:id', async (c) => {
 // ---------- товары ----------
 
 app.get('/api/products', async (c) => {
-  // Покупатель видит только опубликованные позиции в наличии.
+  // Покупатель видит опубликованные позиции, включая закончившиеся.
   const user = await currentUser(c)
   return c.json(await listProducts(c.env.DB, { all: user.is_admin }))
 })
