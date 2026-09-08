@@ -9,6 +9,18 @@
 
 const COUNTED = "('confirmed', 'done')"
 const LOW_STOCK = 3
+// Магазин московский, и админ смотрит сводку по московскому времени: день в
+// UTC обрывался бы в три часа ночи посреди вечерних заходов.
+const MSK = "'+3 hours'"
+
+/**
+ * Отметка посещения: одна строка на человека в день. Повтор молча гасится
+ * первичным ключом, поэтому счётчик показывает людей, а не открытия.
+ */
+export function markVisit(db, userId) {
+  return db.prepare(`INSERT OR IGNORE INTO visits (tg_user_id, day) VALUES (?, date('now', ${MSK}))`)
+    .bind(userId).run()
+}
 
 export async function shopStats(db) {
   // Прибыль считается по снимку закупки в позициях заказа, а скидка вычитается
@@ -24,7 +36,7 @@ export async function shopStats(db) {
        FROM orders WHERE created_at >= datetime('now', ?)`,
   ).bind(since)
 
-  const [statuses, week, month, top, customers, low, stock] = await db.batch([
+  const [statuses, week, month, top, customers, low, stock, visitors] = await db.batch([
     db.prepare('SELECT status, COUNT(*) AS n FROM orders GROUP BY status'),
     period('-7 days'),
     period('-30 days'),
@@ -47,6 +59,14 @@ export async function shopStats(db) {
               COALESCE(SUM(stock), 0) AS items
          FROM products WHERE is_active = 1`,
     ),
+    // Заходы считаются с 08.09.2026 — раньше их никто не записывал, так что
+    // «за всё время» означает «с того дня».
+    db.prepare(
+      `SELECT COUNT(DISTINCT CASE WHEN day = date('now', ${MSK}) THEN tg_user_id END) AS today,
+              COUNT(DISTINCT CASE WHEN day >= date('now', ${MSK}, '-29 days') THEN tg_user_id END) AS month,
+              COUNT(DISTINCT tg_user_id) AS total
+         FROM visits`,
+    ),
   ])
 
   return {
@@ -60,5 +80,6 @@ export async function shopStats(db) {
     low: low.results,
     low_stock: LOW_STOCK,
     stock: stock.results[0],
+    visitors: visitors.results[0],
   }
 }

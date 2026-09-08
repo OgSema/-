@@ -372,6 +372,41 @@ check('смена закупки не переписывает прошлую п
   `${statsAfter.week.profit} → ${reprised.week.profit}`)
 check('склад считается по закупке', reprised.stock.spent >= 450, JSON.stringify(reprised.stock))
 
+// 7.1 Счётчик посетителей: считаем людей, а не открытия.
+const VISITOR = 900000 + Math.floor(Math.random() * 100000)
+const visitorsNow = async () => (await (await call('/api/stats', ADMIN)).json()).visitors
+const before = await visitorsNow()
+
+// Отметка пишется в фоне (waitUntil), поэтому ждём её появления, а не мгновения.
+const waitVisitors = async (expected) => {
+  for (let i = 0; i < 20; i++) {
+    const v = await visitorsNow()
+    if (v.today >= expected) return v
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  return visitorsNow()
+}
+
+await call('/api/me', VISITOR)
+const afterFirst = await waitVisitors(before.today + 1)
+check('новый посетитель посчитан', afterFirst.today === before.today + 1,
+  `${before.today} → ${afterFirst.today}`)
+check('посетитель попал в месяц и всего',
+  afterFirst.month === before.month + 1 && afterFirst.total === before.total + 1,
+  JSON.stringify(afterFirst))
+
+await call('/api/me', VISITOR)
+await new Promise((r) => setTimeout(r, 300))
+const afterSecond = await visitorsNow()
+check('повторный заход того же человека не считается', afterSecond.today === afterFirst.today,
+  `${afterFirst.today} → ${afterSecond.today}`)
+
+await call('/api/me', ADMIN)
+await new Promise((r) => setTimeout(r, 300))
+const afterAdmin = await visitorsNow()
+check('заход админа не считается', afterAdmin.today === afterFirst.today,
+  `${afterFirst.today} → ${afterAdmin.today}`)
+
 // 8. Уборка тестовых данных
 for (const id of [promo.id, expired.id, bigOff.id, limited.id, weak.id, strong.id]) {
   await call(`/api/promos/${id}`, ADMIN, { method: 'DELETE' })

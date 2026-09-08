@@ -83,7 +83,7 @@ function Summary({ onGoToOrders }) {
   if (error) return <p className="muted center">{error}</p>
   if (!data) return <p className="muted center">Считаем…</p>
 
-  const { statuses, week, month, top, customers, low, stock } = data
+  const { statuses, week, month, top, customers, low, stock, visitors } = data
 
   return (
     <div className="summary">
@@ -112,6 +112,12 @@ function Summary({ onGoToOrders }) {
           <span className={month.profit < 0 ? 'profit minus small' : 'profit small'}>
             прибыль {money(month.profit)}
           </span>
+        </div>
+        <div className="card stat">
+          <span className="muted small">Заходили</span>
+          <b>{visitors.today}</b>
+          <span className="muted small">{plural(visitors.today, 'человек', 'человека', 'человек')} сегодня</span>
+          <span className="muted small">за месяц {visitors.month} · всего {visitors.total}</span>
         </div>
         <div className="card stat">
           <span className="muted small">Покупателей</span>

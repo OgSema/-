@@ -82,6 +82,7 @@ npx wrangler d1 execute moscowtab --remote --file=./migrations/0001_delivery_and
 npx wrangler d1 execute moscowtab --remote --file=./migrations/0002_loyalty.sql
 npx wrangler d1 execute moscowtab --remote --file=./migrations/0003_category_cover.sql
 npx wrangler d1 execute moscowtab --remote --file=./migrations/0004_cost.sql
+npx wrangler d1 execute moscowtab --remote --file=./migrations/0005_visits.sql
 ```
 
 Повторный запуск падает с `duplicate column name` — значит, миграция уже

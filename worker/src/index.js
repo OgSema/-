@@ -4,7 +4,7 @@ import { handleUpdate } from './bot/index.js'
 import { adminChat, notifyNewOrder } from './notify.js'
 import { createOrder, deliveryFields, effectiveDiscount, findPromo, listCategories, listProducts, orderItems, priceCart, productRow } from './shop.js'
 import { TIERS, loyaltyStatus, spentByUser, tierFor } from './loyalty.js'
-import { shopStats } from './stats.js'
+import { markVisit, shopStats } from './stats.js'
 import { fetchPhoto, uploadPhoto } from './telegram.js'
 
 const app = new Hono()
@@ -21,6 +21,10 @@ const product = productRow
 
 app.get('/api/me', async (c) => {
   const user = await currentUser(c)
+  // Единственная точка, куда заходит каждый открывший приложение, — отсюда и
+  // считаем посетителей. Пишем в фоне: витрина не должна ждать базу. Свои
+  // заходы не считаем, иначе админы накручивали бы цифру каждый день.
+  if (!user.is_admin) c.executionCtx.waitUntil(markVisit(c.env.DB, user.id))
   return c.json({ ...user, shop_name: c.env.SHOP_NAME || 'Магазин' })
 })
 
