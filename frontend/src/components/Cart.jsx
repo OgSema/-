@@ -1,8 +1,93 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { api } from '../api'
 import { haptic, showAlert } from '../tg'
 
 const EMPTY_DELIVERY = { name: '', comment: '' }
+
+const SWIPE_OUT = 0.45   // доля ширины строки: дальше свайп считается полным
+const SWIPE_START = 8    // px: пока меньше, жест ещё может оказаться прокруткой
+
+/**
+ * Строка корзины со свайпом влево. Пока палец идёт, строка едет за ним и
+ * наливается красным — по цвету видно, отпустишь сейчас или ещё рано.
+ * Полный свайп убирает товар: кнопка «−» до нуля осталась для тех, кто
+ * про жест не знает.
+ */
+function CartRow({ product, qty, onQty }) {
+  const row = useRef(null)
+  const drag = useRef(null)
+  const [dx, setDx] = useState(0)
+  const [swiping, setSwiping] = useState(false)
+  const [gone, setGone] = useState(false)
+
+  const width = row.current?.offsetWidth || 320
+  // 0 — обычная строка, 1 — отпусти и удалится.
+  const kill = Math.min(1, -dx / (width * SWIPE_OUT))
+
+  const start = (e) => {
+    if (!gone) drag.current = { x: e.clientX, y: e.clientY, active: false, passed: false }
+  }
+
+  const move = (e) => {
+    const d = drag.current
+    if (!d) return
+    const moved = e.clientX - d.x
+
+    if (!d.active) {
+      // Пока не ясно, куда ведут палец, не мешаем списку прокручиваться:
+      // жест наш только если он заметно горизонтальный и именно влево.
+      if (moved > -SWIPE_START || Math.abs(moved) <= Math.abs(e.clientY - d.y)) return
+      d.active = true
+      setSwiping(true)
+      e.currentTarget.setPointerCapture?.(e.pointerId)
+    }
+
+    const next = Math.max(-width, Math.min(0, moved))
+    // Отдача на границе: по ней понятно, что можно отпускать.
+    const passed = -next >= width * SWIPE_OUT
+    if (passed !== d.passed) {
+      d.passed = passed
+      haptic()
+    }
+    setDx(next)
+  }
+
+  const end = () => {
+    const d = drag.current
+    drag.current = null
+    setSwiping(false)
+    if (!d?.active) return setDx(0)
+
+    if (-dx < width * SWIPE_OUT) return setDx(0)
+    haptic('medium')
+    // Сначала строка уезжает за край и только потом пропадает из корзины:
+    // иначе она исчезала бы рывком прямо под пальцем.
+    setGone(true)
+    setTimeout(() => onQty(product.id, 0), 180)
+  }
+
+  return (
+    <li
+      ref={row}
+      className={`cart-row${swiping ? ' swiping' : ''}${gone ? ' gone' : ''}`}
+      style={{ '--swipe': `${dx}px`, '--kill': kill }}
+      onPointerDown={start}
+      onPointerMove={move}
+      onPointerUp={end}
+      onPointerCancel={end}
+    >
+      <div className="cart-info">
+        <strong>{product.name}</strong>
+        <span className="muted small">{product.price} ₽ × {qty} = {product.price * qty} ₽</span>
+      </div>
+      <div className="stepper">
+        <button onClick={() => onQty(product.id, qty - 1)}>−</button>
+        <span>{qty}</span>
+        <button disabled={qty >= product.stock} onClick={() => onQty(product.id, qty + 1)}>+</button>
+      </div>
+    </li>
+  )
+}
 
 /** Имя не меняется от заказа к заказу — незачем набирать его каждый раз. */
 const savedDelivery = (user) => {
@@ -84,19 +169,10 @@ export default function Cart({ cart, products, user, tier, onQty, onDone }) {
     <>
       <ul className="cart">
         {lines.map(({ product, qty }) => (
-          <li key={product.id}>
-            <div className="cart-info">
-              <strong>{product.name}</strong>
-              <span className="muted small">{product.price} ₽ × {qty} = {product.price * qty} ₽</span>
-            </div>
-            <div className="stepper">
-              <button onClick={() => onQty(product.id, qty - 1)}>−</button>
-              <span>{qty}</span>
-              <button disabled={qty >= product.stock} onClick={() => onQty(product.id, qty + 1)}>+</button>
-            </div>
-          </li>
+          <CartRow key={product.id} product={product} qty={qty} onQty={onQty} />
         ))}
       </ul>
+      <p className="muted small swipe-hint">Смахните товар влево, чтобы убрать</p>
 
       <div className="promo">
         <input

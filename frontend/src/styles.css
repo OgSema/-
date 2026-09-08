@@ -200,6 +200,30 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .cart-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .cart-info strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Свайп влево по строке корзины: строка идёт за пальцем и наливается красным,
+   а на полном свайпе уезжает за край. Вертикаль оставляем списку (pan-y),
+   иначе жест удаления отбирал бы прокрутку. */
+.cart li.cart-row {
+  transform: translateX(var(--swipe, 0px));
+  touch-action: pan-y;
+  background:
+    linear-gradient(rgba(255, 70, 70, calc(var(--kill, 0) * .34)),
+                    rgba(255, 70, 70, calc(var(--kill, 0) * .34))),
+    var(--glass);
+  border-color: rgba(255, 90, 90, calc(var(--kill, 0) * .7));
+  box-shadow: var(--sheen),
+    0 0 calc(var(--kill, 0) * 20px) rgba(255, 70, 70, calc(var(--kill, 0) * .5));
+  transition: transform .22s cubic-bezier(.22, .61, .36, 1),
+    background .15s linear, box-shadow .15s linear, border-color .15s linear;
+}
+/* Под пальцем строка обязана идти ровно за ним — сглаживать нечего. */
+.cart li.cart-row.swiping { transition: background .1s linear, box-shadow .1s linear, border-color .1s linear; }
+.cart li.cart-row.gone {
+  transform: translateX(-110%); opacity: 0;
+  transition: transform .18s ease-in, opacity .18s ease-in;
+}
+.swipe-hint { text-align: center; padding: 10px 0 0; }
 .admin-list img { width: 44px; height: 44px; border-radius: 10px; object-fit: cover; }
 .small-thumb { width: 44px; height: 44px; aspect-ratio: auto; border-radius: 10px; }
 
