@@ -202,26 +202,42 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .cart-info strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Свайп влево по строке корзины: строка идёт за пальцем и наливается красным,
-   а на полном свайпе уезжает за край. Вертикаль оставляем списку (pan-y),
-   иначе жест удаления отбирал бы прокрутку. */
+   а на полном свайпе уезжает за край и схлопывается. Вертикаль оставляем
+   списку (pan-y), иначе жест удаления отбирал бы прокрутку. */
 .cart li.cart-row {
+  position: relative;
+  height: var(--h, auto);
   transform: translateX(var(--swipe, 0px));
   touch-action: pan-y;
-  background:
-    linear-gradient(rgba(255, 70, 70, calc(var(--kill, 0) * .34)),
-                    rgba(255, 70, 70, calc(var(--kill, 0) * .34))),
-    var(--glass);
-  border-color: rgba(255, 90, 90, calc(var(--kill, 0) * .7));
-  box-shadow: var(--sheen),
-    0 0 calc(var(--kill, 0) * 20px) rgba(255, 70, 70, calc(var(--kill, 0) * .5));
-  transition: transform .22s cubic-bezier(.22, .61, .36, 1),
-    background .15s linear, box-shadow .15s linear, border-color .15s linear;
+  will-change: transform;
+  /* Возврат с лёгким перелётом — так строка «отпружинивает», а не тормозит. */
+  transition: transform .34s cubic-bezier(.22, 1.15, .36, 1);
 }
-/* Под пальцем строка обязана идти ровно за ним — сглаживать нечего. */
-.cart li.cart-row.swiping { transition: background .1s linear, box-shadow .1s linear, border-color .1s linear; }
+/* Под пальцем строка обязана идти ровно за ним, без сглаживания. */
+.cart li.cart-row.swiping { transition: none; }
+
+/* Красное свечение — отдельной накладкой: у неё меняется только прозрачность,
+   и браузер не перерисовывает всю строку на каждый кадр свайпа. */
+.cart li.cart-row::after {
+  content: ''; position: absolute; inset: -1px; border-radius: inherit;
+  pointer-events: none;
+  background: rgba(255, 70, 70, .3);
+  border: 1px solid rgba(255, 95, 95, .75);
+  box-shadow: 0 0 22px rgba(255, 70, 70, .55);
+  opacity: var(--kill, 0);
+  transition: opacity .16s ease-out;
+}
+
 .cart li.cart-row.gone {
   transform: translateX(-110%); opacity: 0;
-  transition: transform .18s ease-in, opacity .18s ease-in;
+  height: 0; padding-top: 0; padding-bottom: 0;
+  border-top-width: 0; border-bottom-width: 0;
+  margin-bottom: -8px;   /* съедаем зазор списка, иначе на месте строки остаётся дырка */
+  overflow: hidden;
+  transition:
+    transform .2s cubic-bezier(.4, 0, 1, 1), opacity .2s linear,
+    height .22s ease .04s, padding .22s ease .04s,
+    margin .22s ease .04s, border-width .22s linear .04s;
 }
 .swipe-hint { text-align: center; padding: 10px 0 0; }
 .admin-list img { width: 44px; height: 44px; border-radius: 10px; object-fit: cover; }

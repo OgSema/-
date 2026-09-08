@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { haptic, showAlert } from '../tg'
 
@@ -6,6 +6,7 @@ const EMPTY_DELIVERY = { name: '', comment: '' }
 
 const SWIPE_OUT = 0.45   // доля ширины строки: дальше свайп считается полным
 const SWIPE_START = 8    // px: пока меньше, жест ещё может оказаться прокруткой
+const FLY_OUT = 260      // мс: столько строка уезжает за край и схлопывается
 
 /**
  * Строка корзины со свайпом влево. Пока палец идёт, строка едет за ним и
@@ -16,16 +17,28 @@ const SWIPE_START = 8    // px: пока меньше, жест ещё може�
 function CartRow({ product, qty, onQty }) {
   const row = useRef(null)
   const drag = useRef(null)
-  const [dx, setDx] = useState(0)
+  const frame = useRef(0)
   const [swiping, setSwiping] = useState(false)
   const [gone, setGone] = useState(false)
 
-  const width = row.current?.offsetWidth || 320
-  // 0 — обычная строка, 1 — отпусти и удалится.
-  const kill = Math.min(1, -dx / (width * SWIPE_OUT))
+  useEffect(() => () => cancelAnimationFrame(frame.current), [])
+
+  // Сдвиг пишем прямо в узел и не чаще кадра. Через состояние React строка
+  // перерисовывалась бы на каждое движение пальца — вот откуда дёрганость.
+  const paint = () => {
+    frame.current = 0
+    const d = drag.current
+    if (!d || !row.current) return
+    row.current.style.setProperty('--swipe', `${d.dx}px`)
+    row.current.style.setProperty('--kill', String(Math.min(1, -d.dx / (d.width * SWIPE_OUT))))
+  }
 
   const start = (e) => {
-    if (!gone) drag.current = { x: e.clientX, y: e.clientY, active: false, passed: false }
+    if (gone) return
+    drag.current = {
+      x: e.clientX, y: e.clientY, dx: 0,
+      width: row.current.offsetWidth, active: false, passed: false,
+    }
   }
 
   const move = (e) => {
@@ -35,42 +48,51 @@ function CartRow({ product, qty, onQty }) {
 
     if (!d.active) {
       // Пока не ясно, куда ведут палец, не мешаем списку прокручиваться:
-      // жест наш только если он заметно горизонтальный и именно влево.
+      // жест наш, только если он заметно горизонтальный и именно влево.
       if (moved > -SWIPE_START || Math.abs(moved) <= Math.abs(e.clientY - d.y)) return
       d.active = true
       setSwiping(true)
       e.currentTarget.setPointerCapture?.(e.pointerId)
     }
 
-    const next = Math.max(-width, Math.min(0, moved))
+    d.dx = Math.max(-d.width, Math.min(0, moved))
     // Отдача на границе: по ней понятно, что можно отпускать.
-    const passed = -next >= width * SWIPE_OUT
+    const passed = -d.dx >= d.width * SWIPE_OUT
     if (passed !== d.passed) {
       d.passed = passed
       haptic()
     }
-    setDx(next)
+    if (!frame.current) frame.current = requestAnimationFrame(paint)
   }
 
   const end = () => {
     const d = drag.current
     drag.current = null
-    setSwiping(false)
-    if (!d?.active) return setDx(0)
+    if (!d?.active) return
 
-    if (-dx < width * SWIPE_OUT) return setDx(0)
+    const el = row.current
+    setSwiping(false)   // вернуть строке плавность: дальше она едет сама
+
+    if (!d.passed) {
+      el.style.setProperty('--swipe', '0px')
+      el.style.setProperty('--kill', '0')
+      return
+    }
+
     haptic('medium')
-    // Сначала строка уезжает за край и только потом пропадает из корзины:
-    // иначе она исчезала бы рывком прямо под пальцем.
+    // Высоту фиксируем числом и сразу заставляем браузер её посчитать: от auto
+    // строка не схлопнулась бы, и список дёргался бы вверх рывком в тот
+    // момент, когда товар уходит из корзины.
+    el.style.setProperty('--h', `${el.offsetHeight}px`)
+    el.getBoundingClientRect()
     setGone(true)
-    setTimeout(() => onQty(product.id, 0), 180)
+    setTimeout(() => onQty(product.id, 0), FLY_OUT)
   }
 
   return (
     <li
       ref={row}
       className={`cart-row${swiping ? ' swiping' : ''}${gone ? ' gone' : ''}`}
-      style={{ '--swipe': `${dx}px`, '--kill': kill }}
       onPointerDown={start}
       onPointerMove={move}
       onPointerUp={end}
