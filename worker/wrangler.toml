@@ -18,6 +18,8 @@ not_found_handling = "single-page-application"
 SHOP_NAME = "MoscowTab"
 ADMIN_IDS = "7500381413,1141664845"
 ORDER_CHAT_ID = ""
+# Имя бота без «@»: корзина по нему уводит в чат, когда бот не смог написать сам.
+BOT_USERNAME = "moscowtabot"
 # Адрес Mini App: бот ставит кнопку «Магазин» каждому при /start.
 # Имя trydokli.ru фильтруется по SNI у российских провайдеров — вместе со всеми
 # поддоменами, поэтому приложение живёт на workers.dev. Домен оставлен

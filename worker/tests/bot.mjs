@@ -37,7 +37,7 @@ const message = async (from, text) => {
     headers: { 'Content-Type': 'application/json', 'X-Telegram-Bot-Api-Secret-Token': SECRET },
     body: JSON.stringify({
       update_id: ++id,
-      message: { message_id: ++id, chat: { id: from.id }, from, text },
+      message: { message_id: ++id, chat: { id: from.id, type: 'private' }, from, text },
     }),
   })
   await new Promise((r) => setTimeout(r, 350))

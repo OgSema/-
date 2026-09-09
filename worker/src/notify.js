@@ -1,4 +1,5 @@
 import { adminIds } from './auth.js'
+import { orderItems } from './shop.js'
 import { sendMessage } from './telegram.js'
 
 const lines = (items) =>
@@ -56,10 +57,33 @@ export const notifyCustomer = (env, order) =>
       `<b>Итого: ${order.total} ₽</b>${delivery(order)}\n\nСкоро напишем сюда, чтобы подтвердить детали.`,
   )
 
+const markNotified = (env, id) =>
+  env.DB.prepare('UPDATE orders SET customer_notified = 1 WHERE id = ?').bind(id).run()
+
 /** Для Mini App: пишем и покупателю, и админу. */
 export async function notifyNewOrder(env, order) {
-  return {
-    customer_notified: await notifyCustomer(env, order),
-    admin_notified: await notifyAdmin(env, order),
+  const customer_notified = await notifyCustomer(env, order)
+  if (customer_notified) await markNotified(env, order.id)
+  return { customer_notified, admin_notified: await notifyAdmin(env, order) }
+}
+
+/**
+ * Долг перед покупателем: подтверждения, которые бот не смог отправить, потому
+ * что ему ни разу не писали. Покупатель написал — право появилось, досылаем.
+ * Отменённые заказы пропускаем: подтверждать нечего.
+ */
+export async function deliverPending(env, tgUserId) {
+  const { results } = await env.DB
+    .prepare(
+      `SELECT * FROM orders
+        WHERE tg_user_id = ? AND customer_notified = 0 AND status <> 'canceled'
+        ORDER BY id`,
+    )
+    .bind(tgUserId).all()
+
+  for (const order of results) {
+    const items = await orderItems(env.DB, order.id)
+    if (await notifyCustomer(env, { ...order, items })) await markNotified(env, order.id)
   }
+  return results.length
 }

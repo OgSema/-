@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
-import { haptic, showAlert } from '../tg'
+import { haptic, openChat, showAlert } from '../tg'
 
 const EMPTY_DELIVERY = { name: '', comment: '' }
 
@@ -171,12 +171,23 @@ export default function Cart({ cart, products, user, tier, onQty, onDone }) {
     if (sending || lines.length === 0) return
     setSending(true)
     try {
-      await api.createOrder(items(), promo?.code || '', delivery)
+      const order = await api.createOrder(items(), promo?.code || '', delivery)
       try {
         localStorage.setItem('delivery', JSON.stringify({ name: delivery.name }))
       } catch { /* приватный режим — просто не запомним */ }
       haptic('medium')
-      showAlert('Заказ отправлен. Подробности — в чате с ботом.')
+      // Бот не вправе писать первым тому, кто ни разу ему не написал: в магазин
+      // можно зайти с иконки или из профиля, минуя чат. Тогда подтверждение
+      // ждёт в очереди, а покупателя отправляем нажать «Старт».
+      if (order.customer_notified) {
+        showAlert('Заказ отправлен. Подробности — в чате с ботом.')
+      } else {
+        showAlert(
+          'Заказ принят, админ его уже видит.\n\nЧтобы получать подтверждение и статус, ' +
+            'откройте чат с ботом и нажмите «Старт» — подтверждение придёт сразу.',
+          () => openChat(user?.bot_username),
+        )
+      }
       onDone()
     } catch (e) {
       showAlert(e.message)

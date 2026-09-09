@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS orders (
   promo_code    TEXT NOT NULL DEFAULT '',
   loyalty_tier  TEXT NOT NULL DEFAULT '',    -- уровень, если скидку дал он, а не код
   status        TEXT NOT NULL DEFAULT 'new',
+  -- Дошло ли подтверждение покупателю: бот не вправе писать первым тому,
+  -- кто ни разу ему не написал. Недошедшее досылается при первом сообщении.
+  customer_notified INTEGER NOT NULL DEFAULT 0,
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

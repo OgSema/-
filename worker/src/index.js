@@ -25,7 +25,12 @@ app.get('/api/me', async (c) => {
   // считаем посетителей. Пишем в фоне: витрина не должна ждать базу. Свои
   // заходы не считаем, иначе админы накручивали бы цифру каждый день.
   if (!user.is_admin) c.executionCtx.waitUntil(markVisit(c.env.DB, user.id))
-  return c.json({ ...user, shop_name: c.env.SHOP_NAME || 'Магазин' })
+  return c.json({
+    ...user,
+    shop_name: c.env.SHOP_NAME || 'Магазин',
+    // Имя бота нужно корзине: если подтверждение не дошло, она уводит в чат с ним.
+    bot_username: c.env.BOT_USERNAME || '',
+  })
 })
 
 // ---------- профиль и лояльность ----------

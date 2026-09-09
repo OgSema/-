@@ -34,13 +34,18 @@ export function haptic(type = 'light') {
   } catch { /* старый клиент */ }
 }
 
-export function showAlert(text) {
+export function showAlert(text, after) {
   // showAlert появился в Bot API 6.2, на старых клиентах кидает исключение.
   try {
-    if (tg?.showAlert) return tg.showAlert(text)
+    if (tg?.showAlert) return tg.showAlert(text, after)
   } catch { /* падаем на обычный alert */ }
   alert(text)
+  after?.()
 }
+
+/** Перейти в чат с ботом: Telegram закрывает приложение и открывает переписку. */
+export const openChat = (username) =>
+  username && tryCall('openTelegramLink', `https://t.me/${username}`)
 
 /**
  * Ярлык на экране телефона. Статус: added | missed | unknown | unsupported.

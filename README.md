@@ -41,6 +41,7 @@ Telegram отдаёт мини-приложению строку `initData`, п�
 | `ORDER_CHAT_ID` | `wrangler.toml` → `[vars]` | куда слать заказы; пусто — в личку каждому админу |
 | `SHOP_NAME` | `wrangler.toml` → `[vars]` | заголовок в шапке |
 | `MINI_APP_URL` | `wrangler.toml` → `[vars]` | адрес приложения для кнопок бота |
+| `BOT_USERNAME` | `wrangler.toml` → `[vars]` | имя бота без «@»: корзина уводит в чат, если бот не смог написать сам |
 | `DEV_MODE` | только локально | `1` — пускать без Telegram под фейковым админом |
 
 ## Локальный запуск
@@ -83,6 +84,7 @@ npx wrangler d1 execute moscowtab --remote --file=./migrations/0002_loyalty.sql
 npx wrangler d1 execute moscowtab --remote --file=./migrations/0003_category_cover.sql
 npx wrangler d1 execute moscowtab --remote --file=./migrations/0004_cost.sql
 npx wrangler d1 execute moscowtab --remote --file=./migrations/0005_visits.sql
+npx wrangler d1 execute moscowtab --remote --file=./migrations/0006_customer_notified.sql
 ```
 
 Повторный запуск падает с `duplicate column name` — значит, миграция уже

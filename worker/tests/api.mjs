@@ -138,6 +138,53 @@ const again = await call('/api/orders', CUSTOMER, {
 })
 check('остаток списан, повторный заказ отклонён', again.status === 409, (await again.json()).detail)
 
+// 3a. Покупатель, который ни разу не писал боту: в магазин можно зайти
+// с иконки или из профиля, минуя чат, и тогда бот не вправе ему писать.
+// Заказ всё равно принимается, а подтверждение ждёт первого сообщения.
+const MUTED = Number(process.env.TG_MUTED || 909090)
+// Мок живёт дольше одного прогона: возвращаем ему молчание, иначе со второго
+// раза подтверждение «дойдёт» и проверка станет бессмысленной.
+await fetch((process.env.TELEGRAM_API_BASE || 'http://localhost:9099') + '/mute').catch(() => {})
+const forMuted = await (await call('/api/products', ADMIN, {
+  method: 'POST', body: JSON.stringify({ name: 'Молчуну', price: 100, stock: 1, category_id: cat.id }),
+})).json()
+
+tgCalls()
+const mutedOrder = await (await call('/api/orders', MUTED, {
+  method: 'POST', body: JSON.stringify({ items: [{ product_id: forMuted.id, qty: 1 }], ...DELIVERY }),
+})).json()
+check('заказ принят и без переписки с ботом', mutedOrder.id > 0, JSON.stringify(mutedOrder).slice(0, 100))
+check('подтверждение не дошло', mutedOrder.customer_notified === false, String(mutedOrder.customer_notified))
+check('админ заказ всё равно получил', mutedOrder.admin_notified === true)
+
+const owed = (await (await call('/api/orders', ADMIN)).json()).find((o) => o.id === mutedOrder.id)
+check('долг перед покупателем записан', owed?.customer_notified === 0, String(owed?.customer_notified))
+
+// Покупатель написал боту — право писать появилось, подтверждение уходит следом.
+tgCalls()
+await fetch(BASE + '/tg', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-Telegram-Bot-Api-Secret-Token': process.env.WEBHOOK_SECRET || 'testsecret',
+  },
+  body: JSON.stringify({
+    update_id: 1,
+    message: { message_id: 1, chat: { id: MUTED, type: 'private' }, from: { id: MUTED }, text: '/start' },
+  }),
+})
+await new Promise((r) => setTimeout(r, 500))
+const afterStart = tgCalls().filter((c) => c.method === 'sendMessage' && Number(c.payload.chat_id) === MUTED)
+check('после первого сообщения подтверждение дослано',
+  afterStart.some((c) => c.payload.text.includes(`Заказ №${mutedOrder.id} принят`)),
+  afterStart.map((c) => c.payload.text.slice(0, 30)).join(' | '))
+
+const settled = (await (await call('/api/orders', ADMIN)).json()).find((o) => o.id === mutedOrder.id)
+check('долг закрыт', settled?.customer_notified === 1, String(settled?.customer_notified))
+
+// Товар больше не нужен: пустой остаток вытеснял бы чужие позиции из сводки.
+await call(`/api/products/${forMuted.id}`, ADMIN, { method: 'DELETE' })
+
 // 4. Заказы только для админа
 check('покупатель не видит заказы', (await call('/api/orders', CUSTOMER)).status === 403)
 const orders = await (await call('/api/orders', ADMIN)).json()
