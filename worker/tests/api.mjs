@@ -307,6 +307,38 @@ const promoList = await (await call('/api/promos', ADMIN)).json()
 check('счётчик применений вырос ровно на одно',
   promoList.find((x) => x.id === limited.id)?.used_count === 1)
 
+// 5a. Отмена заказа стирает его насовсем: товар возвращается на склад,
+// применение промокода — обратно в лимит.
+const cancelItem = await (await call('/api/products', ADMIN, {
+  method: 'POST', body: JSON.stringify({ name: 'Отменяемый', price: 1000, stock: 3, category_id: cat.id }),
+})).json()
+// Код нужен свежий: у исчерпанного возвращать было бы нечего.
+const doomedPromo = await (await mkPromo({
+  code: 'CANC' + rnd(), kind: 'amount', value: 100, starts_at: day(-1), ends_at: day(7), max_uses: 1,
+})).json()
+const doomed = await (await call('/api/orders', CUSTOMER, {
+  method: 'POST', body: JSON.stringify({
+    items: [{ product_id: cancelItem.id, qty: 2 }], promo_code: doomedPromo.code, ...DELIVERY,
+  }),
+})).json()
+check('отменяемый заказ занял код', doomed.promo_code === doomedPromo.code, doomed.promo_code)
+const stockOf = async (id) => (await (await call('/api/products', ADMIN)).json()).find((p) => p.id === id)?.stock
+check('остаток списан под заказ', (await stockOf(cancelItem.id)) === 1)
+
+check('покупатель не может отменить заказ',
+  (await call(`/api/orders/${doomed.id}`, CUSTOMER, { method: 'DELETE' })).status === 403)
+check('админ отменил заказ', (await call(`/api/orders/${doomed.id}`, ADMIN, { method: 'DELETE' })).status === 200)
+check('заказ пропал из панели',
+  !(await (await call('/api/orders', ADMIN)).json()).some((o) => o.id === doomed.id))
+check('товар вернулся на склад', (await stockOf(cancelItem.id)) === 3, String(await stockOf(cancelItem.id)))
+const freed = (await (await call('/api/promos', ADMIN)).json()).find((x) => x.id === doomedPromo.id)
+check('применение кода вернулось в лимит', freed?.used_count === 0, String(freed?.used_count))
+check('отменить второй раз нельзя',
+  (await call(`/api/orders/${doomed.id}`, ADMIN, { method: 'DELETE' })).status === 404)
+
+await call(`/api/products/${cancelItem.id}`, ADMIN, { method: 'DELETE' })
+await call(`/api/promos/${doomedPromo.id}`, ADMIN, { method: 'DELETE' })
+
 // 6. Лояльность
 const LOYAL = 900000 + rnd()
 const loyaltyItem = await (await call('/api/products', ADMIN, {

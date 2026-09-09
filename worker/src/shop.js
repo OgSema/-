@@ -67,6 +67,32 @@ const claimPromo = async (db, promo) => {
 const releasePromo = (db, promo) =>
   db.prepare('UPDATE promos SET used_count = used_count - 1 WHERE id = ? AND used_count > 0').bind(promo.id).run()
 
+/**
+ * Отмена заказа: строку стирают целиком, вместе с составом. Товар возвращается
+ * на склад, а применение промокода — обратно в лимит: заказа больше нет, значит
+ * и кода он не съедал. Возвращает удалённый заказ или null, если его уже нет.
+ */
+export async function cancelOrder(db, id) {
+  const order = await db.prepare('SELECT * FROM orders WHERE id = ?').bind(id).first()
+  if (!order) return null
+
+  const { results: items } = await db
+    .prepare('SELECT product_id, qty FROM order_items WHERE order_id = ?').bind(id).all()
+
+  await db.batch([
+    // Товар, снятый из каталога, возвращать некуда — у такой строки нет product_id.
+    ...items.filter((i) => i.product_id).map((i) =>
+      db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').bind(i.qty, i.product_id)),
+    ...(order.promo_code
+      ? [db.prepare('UPDATE promos SET used_count = used_count - 1 WHERE code = ? AND used_count > 0')
+        .bind(order.promo_code)]
+      : []),
+    db.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id),
+    db.prepare('DELETE FROM orders WHERE id = ?').bind(id),
+  ])
+  return order
+}
+
 /** Скидка в рублях. Больше суммы заказа не бывает, в минус не уводит. */
 export const promoDiscount = (promo, total) => {
   if (!promo) return 0

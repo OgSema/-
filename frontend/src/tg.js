@@ -43,6 +43,14 @@ export function showAlert(text, after) {
   after?.()
 }
 
+/** Спрашиваем перед необратимым. На старых клиентах — обычный confirm. */
+export function showConfirm(text, after) {
+  try {
+    if (tg?.showConfirm) return tg.showConfirm(text, after)
+  } catch { /* метод из более новой версии Bot API */ }
+  after(window.confirm(text))
+}
+
 /** Перейти в чат с ботом: Telegram закрывает приложение и открывает переписку. */
 export const openChat = (username) =>
   username && tryCall('openTelegramLink', `https://t.me/${username}`)

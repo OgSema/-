@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { HttpError, currentUser, requireAdmin } from './auth.js'
 import { handleUpdate } from './bot/index.js'
 import { adminChat, notifyNewOrder } from './notify.js'
-import { createOrder, deliveryFields, effectiveDiscount, findPromo, listCategories, listProducts, orderItems, priceCart, productRow } from './shop.js'
+import { cancelOrder, createOrder, deliveryFields, effectiveDiscount, findPromo, listCategories, listProducts, orderItems, priceCart, productRow } from './shop.js'
 import { TIERS, loyaltyStatus, spentByUser, tierFor } from './loyalty.js'
 import { markVisit, shopStats } from './stats.js'
 import { fetchPhoto, uploadPhoto } from './telegram.js'
@@ -290,6 +290,14 @@ app.get('/api/orders', async (c) => {
   await requireAdmin(c)
   const { results } = await c.env.DB.prepare('SELECT * FROM orders ORDER BY id DESC').all()
   return c.json(await Promise.all(results.map((o) => withItems(c.env.DB, o))))
+})
+
+/** Отмена: заказ стирается насовсем, товар возвращается на склад. */
+app.delete('/api/orders/:id', async (c) => {
+  await requireAdmin(c)
+  const gone = await cancelOrder(c.env.DB, Number(c.req.param('id')))
+  if (!gone) throw new HttpError(404, 'Заказ не найден')
+  return c.json({ ok: true })
 })
 
 app.patch('/api/orders/:id', async (c) => {

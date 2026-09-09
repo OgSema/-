@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import { showAlert } from '../tg'
+import { showAlert, showConfirm } from '../tg'
 import ProductForm from './ProductForm'
 import Cropper from './Cropper'
 
@@ -127,7 +127,9 @@ function Summary({ onGoToOrders }) {
         <div className="card stat">
           <span className="muted small">Выдано</span>
           <b>{statuses.done}</b>
-          <span className="muted small">отменено {statuses.canceled}</span>
+          {/* Отменённые заказы стираются насовсем, считать их больше нечего —
+              вместо них показываем, сколько сейчас в работе. */}
+          <span className="muted small">в работе {statuses.new + statuses.confirmed}</span>
         </div>
 
         <div className="card stat wide">
@@ -173,8 +175,27 @@ function Summary({ onGoToOrders }) {
   )
 }
 
+const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
+  'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь']
+
+/** Время по-московски: магазин московский, сводка считает дни так же. */
+const msk = (value) => {
+  const d = value instanceof Date ? new Date(value) : new Date(`${String(value).replace(' ', 'T')}Z`)
+  d.setUTCHours(d.getUTCHours() + 3)
+  return d
+}
+const sameMonth = (a, b) => a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCMonth() === b.getUTCMonth()
+
+/**
+ * Заказы на двух бордах. Общий — работа: новые и подтверждённые, подтверждённый
+ * подсвечен, чтобы не перепутать его с неотвеченным. «Выдан» уводит заказ в чеки,
+ * там он лежит до конца месяца. Отмена стирает заказ насовсем и возвращает товар
+ * на склад; чеки прошлых месяцев из панели уходят, но в базе остаются — на них
+ * держатся выручка в сводке и уровни покупателей.
+ */
 function Orders() {
   const [orders, setOrders] = useState([])
+  const [board, setBoard] = useState('active')
 
   const load = () => api.orders().then(setOrders).catch((e) => showAlert(e.message))
   useEffect(() => { load() }, [])
@@ -188,43 +209,88 @@ function Orders() {
     }
   }
 
-  if (orders.length === 0) return <p className="muted center">Заказов пока нет</p>
+  const drop = (id) => showConfirm(
+    `Отменить заказ №${id}? Он исчезнет насовсем, товар вернётся на склад.`,
+    async (ok) => {
+      if (!ok) return
+      try {
+        await api.deleteOrder(id)
+        load()
+      } catch (e) {
+        showAlert(e.message)
+      }
+    },
+  )
+
+  const now = msk(new Date())
+  const active = orders.filter((o) => o.status === 'new' || o.status === 'confirmed')
+  const receipts = orders.filter((o) => o.status === 'done' && sameMonth(msk(o.created_at), now))
+  const shown = board === 'active' ? active : receipts
+  const earned = receipts.reduce((sum, o) => sum + o.total, 0)
+
+  const card = (o, actions) => (
+    <li key={o.id} className={`order ${o.status}`}>
+      <div className="order-head">
+        <strong>№{o.id}</strong>
+        <span className={`status ${o.status}`}>{STATUS[o.status]}</span>
+      </div>
+      <p className="muted small">
+        {o.customer_name}{o.username && ` · @${o.username}`} · id {o.tg_user_id}
+      </p>
+      {(o.phone || o.address || o.comment) && (
+        <p className="small delivery-info">
+          {o.phone && <>{o.phone}<br /></>}
+          {o.address && <>{o.address}<br /></>}
+          {o.comment && <span className="muted">{o.comment}</span>}
+        </p>
+      )}
+      <ul className="order-items">
+        {o.items.map((i, idx) => <li key={idx}>{i.name} — {i.qty} × {i.price} ₽</li>)}
+      </ul>
+      <div className="order-foot">
+        <strong>{o.total} ₽</strong>
+        <div className="order-actions">
+          {o.username && <a className="ghost" href={`https://t.me/${o.username}`} target="_blank" rel="noreferrer">Написать</a>}
+          {actions}
+        </div>
+      </div>
+    </li>
+  )
 
   return (
-    <ul className="admin-list orders">
-      {orders.map((o) => (
-        <li key={o.id} className="order">
-          <div className="order-head">
-            <strong>№{o.id}</strong>
-            <span className={`status ${o.status}`}>{STATUS[o.status]}</span>
-          </div>
-          <p className="muted small">
-            {o.customer_name}{o.username && ` · @${o.username}`} · id {o.tg_user_id}
-          </p>
-          {(o.phone || o.address || o.comment) && (
-            <p className="small delivery-info">
-              {o.phone && <>{o.phone}<br /></>}
-              {o.address && <>{o.address}<br /></>}
-              {o.comment && <span className="muted">{o.comment}</span>}
-            </p>
-          )}
-          <ul className="order-items">
-            {o.items.map((i, idx) => <li key={idx}>{i.name} — {i.qty} × {i.price} ₽</li>)}
+    <>
+      <div className="chips boards">
+        <button className={board === 'active' ? 'chip active' : 'chip'} onClick={() => setBoard('active')}>
+          Общий ({active.length})
+        </button>
+        <button className={board === 'receipts' ? 'chip active' : 'chip'} onClick={() => setBoard('receipts')}>
+          Чеки ({receipts.length})
+        </button>
+      </div>
+
+      {board === 'receipts' && (
+        <p className="muted small">
+          Выдано за {MONTHS[now.getUTCMonth()]}: {receipts.length} на {earned} ₽.
+          Чеки прошлых месяцев скрыты, но в сводке и уровнях покупателей учтены.
+        </p>
+      )}
+
+      {shown.length === 0
+        ? <p className="muted center">{board === 'active' ? 'Новых заказов нет' : 'Чеков за этот месяц нет'}</p>
+        : (
+          <ul className="admin-list orders">
+            {shown.map((o) => card(o, board === 'active' && (
+              <>
+                {o.status === 'new' && (
+                  <button className="ghost" onClick={() => change(o.id, 'confirmed')}>Подтвердить</button>
+                )}
+                <button className="ghost" onClick={() => change(o.id, 'done')}>Выдан</button>
+                <button className="ghost danger" onClick={() => drop(o.id)}>Отменить</button>
+              </>
+            )))}
           </ul>
-          <div className="order-foot">
-            <strong>{o.total} ₽</strong>
-            <div className="order-actions">
-              {o.username && <a className="ghost" href={`https://t.me/${o.username}`} target="_blank" rel="noreferrer">Написать</a>}
-              {o.status !== 'confirmed' && o.status !== 'done' && (
-                <button className="ghost" onClick={() => change(o.id, 'confirmed')}>Подтвердить</button>
-              )}
-              {o.status !== 'done' && <button className="ghost" onClick={() => change(o.id, 'done')}>Выдан</button>}
-              {o.status !== 'canceled' && <button className="ghost danger" onClick={() => change(o.id, 'canceled')}>Отменить</button>}
-            </div>
-          </div>
-        </li>
-      ))}
-    </ul>
+        )}
+    </>
   )
 }
 

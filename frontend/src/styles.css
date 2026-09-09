@@ -277,6 +277,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .order-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .order-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
+/* Подтверждённый заказ остаётся на общем борде, но помечен жёлтым: его уже
+   не надо брать в работу, а выдать — надо. */
+.order.confirmed { border-color: rgba(255, 176, 32, .45); background: rgba(255, 176, 32, .07); }
+
+/* Второй ряд ярлыков — борды внутри «Заказов». */
+.chips.boards { margin-top: 0; }
+
 /* Раздел: название сверху, кнопки строкой под ним — иначе три кнопки сжимают
    название до одной буквы. */
 .admin-list li.cat-row { flex-direction: column; align-items: stretch; gap: 8px; }
