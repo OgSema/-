@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
+import { squareCutout } from '../photo'
 import { showAlert } from '../tg'
 import Cropper from './Cropper'
 
@@ -19,6 +20,7 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
   }))
   const [busy, setBusy] = useState(false)
   const [cropping, setCropping] = useState(null)   // файл, ожидающий кадрирования
+  const pasteBox = useRef(null)
 
   const set = (field) => (e) => {
     const el = e.target
@@ -26,40 +28,7 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
     setForm((f) => ({ ...f, [field]: value }))
   }
 
-  // Сначала кадрируем, грузим уже обрезанное — так карточки в каталоге ровные.
-  const pickPhoto = (e) => {
-    const file = e.target.files?.[0]
-    if (file) setCropping(file)
-    e.target.value = ''
-  }
-
-  // Объект, вырезанный на айфоне из фона, кладётся в буфер обмена — принимаем
-  // его и обычной вставкой, и кнопкой: до «Фото» он может и не доехать.
-  useEffect(() => {
-    const onPaste = (e) => {
-      const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith('image/'))
-      if (item) setCropping(item.getAsFile())
-    }
-    document.addEventListener('paste', onPaste)
-    return () => document.removeEventListener('paste', onPaste)
-  }, [])
-
-  const pastePhoto = async () => {
-    try {
-      for (const item of await navigator.clipboard.read()) {
-        const type = item.types.find((t) => t.startsWith('image/'))
-        if (type) {
-          const blob = await item.getType(type)
-          return setCropping(new File([blob], `paste.${type.split('/')[1]}`, { type }))
-        }
-      }
-      showAlert('В буфере обмена нет картинки')
-    } catch {
-      showAlert('Буфер обмена недоступен. Сохраните вырезанный объект в «Фото» и выберите его файлом.')
-    }
-  }
-
-  const uploadCropped = async (file) => {
+  const upload = async (file) => {
     setCropping(null)
     setBusy(true)
     try {
@@ -69,6 +38,76 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
       showAlert(err.message)
     } finally {
       setBusy(false)
+    }
+  }
+
+  /**
+   * Общий вход для картинки, откуда бы она ни пришла: из «Фото», из буфера или
+   * перетаскиванием. Вырезанный объект грузим как есть, обычный снимок сначала
+   * кадрируем — так карточки в каталоге остаются ровными.
+   */
+  const accept = async (file) => {
+    if (!file) return
+    const cutout = await squareCutout(file).catch(() => null)
+    if (cutout) upload(cutout)
+    else setCropping(file)
+  }
+
+  const pickPhoto = (e) => {
+    accept(e.target.files?.[0])
+    e.target.value = ''
+  }
+
+  // Вставка ловится на всём документе: на айфоне «Вставить» предлагают только
+  // в поле для текста, и событие всплывает оттуда.
+  useEffect(() => {
+    const onPaste = (e) => {
+      const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith('image/'))
+      if (!item) return
+      e.preventDefault()      // иначе картинка осядет в рамке для вставки
+      accept(item.getAsFile())
+    }
+    document.addEventListener('paste', onPaste)
+    return () => document.removeEventListener('paste', onPaste)
+  }, [])
+
+  /**
+   * Запасной путь: часть клиентов кладёт вставленную картинку не в файлы, а
+   * прямо в разметку. Тогда забираем её из вставленного <img> и чистим рамку.
+   */
+  const rescuePasted = () => setTimeout(async () => {
+    const img = pasteBox.current?.querySelector('img')
+    if (!img) return
+    pasteBox.current.innerHTML = ''
+    try {
+      const blob = await (await fetch(img.src)).blob()
+      accept(new File([blob], 'paste.png', { type: blob.type || 'image/png' }))
+    } catch {
+      showAlert('Картинку из буфера прочитать не вышло. Сохраните её в «Фото» и выберите файлом.')
+    }
+  }, 0)
+
+  const drop = (e) => {
+    const file = [...(e.dataTransfer?.files || [])].find((f) => f.type.startsWith('image/'))
+    if (!file) return
+    e.preventDefault()
+    accept(file)
+  }
+
+  const pastePhoto = async () => {
+    try {
+      for (const item of await navigator.clipboard.read()) {
+        const type = item.types.find((t) => t.startsWith('image/'))
+        if (type) {
+          const blob = await item.getType(type)
+          return accept(new File([blob], `paste.${type.split('/')[1]}`, { type }))
+        }
+      }
+      showAlert('В буфере обмена нет картинки')
+    } catch {
+      // Telegram не даёт читать буфер сам — остаётся системная вставка в рамку.
+      pasteBox.current?.focus()
+      showAlert('Нажмите на рамку под кнопками, подержите палец и выберите «Вставить».')
     }
   }
 
@@ -112,7 +151,12 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
 
   return (
     <div className="sheet-backdrop" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="sheet"
+        onClick={(e) => e.stopPropagation()}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={drop}
+      >
         <h2>{form.id ? 'Редактирование' : 'Новый товар'}</h2>
 
         <label>Название<input value={form.name} onChange={set('name')} placeholder="Darkside Supernova" /></label>
@@ -143,8 +187,18 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
           </label>
           <button className="ghost" onClick={pastePhoto}>Вставить из буфера</button>
         </div>
+        <div
+          className="paste-box"
+          ref={pasteBox}
+          contentEditable
+          inputMode="none"
+          suppressContentEditableWarning
+          onPaste={rescuePasted}
+        />
         <p className="muted small">
-          Вырезанный на айфоне объект вставляется из буфера — прозрачный фон сохранится.
+          Вырезанный на айфоне объект: перетащите его сюда или нажмите на рамку,
+          подержите палец и выберите «Вставить». Прозрачный фон сохранится,
+          кадрировать такой объект не нужно.
         </p>
         {form.photo_url && <img className="preview" src={form.photo_url} alt="" />}
 
@@ -168,7 +222,7 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
           aspect={1}
           outWidth={900}
           onCancel={() => setCropping(null)}
-          onDone={uploadCropped}
+          onDone={upload}
         />
       )}
     </div>

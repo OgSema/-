@@ -47,6 +47,8 @@ http.createServer((req, res) => {
         chat: { id: payload.chat_id },
         message_id: payload.message_id || ++messageId,
         photo: [{ file_id: 'FAKE_FILE_ID' }],
+        // PNG с прозрачностью уходит документом — у ответа другое поле.
+        document: { file_id: 'FAKE_DOC_ID' },
       },
     }))
   })

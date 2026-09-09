@@ -521,6 +521,17 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .photo-pick { display: flex; align-items: center; gap: 10px; margin: 10px 0; flex-wrap: wrap; }
 
+/* Рамка для вставки вырезанного объекта. Поле для текста, потому что «Вставить»
+   айфон предлагает только там, куда можно писать; клавиатуру гасит inputmode. */
+.paste-box {
+  min-height: 56px; padding: 10px;
+  border: 1px dashed var(--border); border-radius: var(--radius);
+  display: grid; place-items: center;
+  color: var(--hint); font-size: 13px; text-align: center;
+}
+.paste-box:empty::before { content: 'Вставить или перетащить сюда'; }
+.paste-box img { max-height: 36px; }
+
 /* Сводка админки: крупные числа, по которым видно состояние магазина. */
 .summary h3 { margin: 20px 0 8px; font-size: 15px; font-weight: 600; }
 .summary h3 .small { font-weight: 400; }

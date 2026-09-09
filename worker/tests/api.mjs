@@ -185,6 +185,36 @@ check('долг закрыт', settled?.customer_notified === 1, String(settled?
 // Товар больше не нужен: пустой остаток вытеснял бы чужие позиции из сводки.
 await call(`/api/products/${forMuted.id}`, ADMIN, { method: 'DELETE' })
 
+// 3b. Загрузка картинки. Вырезанный на айфоне объект — PNG с прозрачным фоном:
+// sendPhoto пережал бы его в JPEG и залил фон чёрным, поэтому такие уходят
+// документом. Обычный снимок остаётся фотографией.
+const upload = async (id, name, type, bytes) => {
+  const form = new FormData()
+  form.append('file', new File([bytes], name, { type }), name)
+  return fetch(BASE + '/api/upload', {
+    method: 'POST', body: form, headers: { Authorization: `tma ${initData(id)}` },
+  })
+}
+const PNG = Uint8Array.from(atob(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+), (ch) => ch.charCodeAt(0))
+
+check('покупатель не может грузить фото', (await upload(CUSTOMER, 'x.png', 'image/png', PNG)).status === 403)
+
+tgCalls()
+const pngUp = await upload(ADMIN, 'cutout.png', 'image/png', PNG)
+const pngBody = await pngUp.json()
+const pngCall = tgCalls().find((c) => c.method === 'sendDocument' || c.method === 'sendPhoto')
+check('прозрачный PNG уходит документом', pngCall?.method === 'sendDocument', pngCall?.method)
+check('ссылка на фото ведёт на file_id документа', pngBody.url === '/photo/FAKE_DOC_ID', pngBody.url)
+
+tgCalls()
+const jpgUp = await upload(ADMIN, 'photo.jpg', 'image/jpeg', PNG)
+const jpgBody = await jpgUp.json()
+const jpgCall = tgCalls().find((c) => c.method === 'sendDocument' || c.method === 'sendPhoto')
+check('обычный снимок уходит фотографией', jpgCall?.method === 'sendPhoto', jpgCall?.method)
+check('ссылка на снимок ведёт на file_id фото', jpgBody.url === '/photo/FAKE_FILE_ID', jpgBody.url)
+
 // 4. Заказы только для админа
 check('покупатель не видит заказы', (await call('/api/orders', CUSTOMER)).status === 403)
 const orders = await (await call('/api/orders', ADMIN)).json()
