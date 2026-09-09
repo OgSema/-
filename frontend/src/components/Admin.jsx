@@ -523,6 +523,16 @@ function Promos() {
           Лимит применений <span className="muted">(0 — без ограничения)</span>
           <input type="number" inputMode="numeric" min="0" value={form.max_uses} onChange={set('max_uses')} />
         </label>
+        {/* Одноразовый код — тот же лимит, равный единице: галочка и поле
+            показывают одно и то же, поэтому лишнего состояния не заводим. */}
+        <label className="checkbox">
+          <input
+            type="checkbox"
+            checked={Number(form.max_uses) === 1}
+            onChange={(e) => setForm((f) => ({ ...f, max_uses: e.target.checked ? 1 : 0 }))}
+          />
+          Одноразовый: сгорает после первого заказа
+        </label>
       </div>
       <button className="primary" disabled={busy} onClick={add}>{busy ? '…' : 'Создать код'}</button>
 

@@ -494,6 +494,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
    «Ваших данных» в корзине. */
 .promo-form label { display: block; font-size: 13px; color: var(--hint); margin-top: 10px; }
 .promo-form input, .promo-form select { width: 100%; }
+/* Галочка — строка, а не подпись над полем во всю ширину, как остальные. */
+.promo-form label.checkbox { display: flex; align-items: center; gap: 8px; }
+.promo-form label.checkbox input { width: auto; margin: 0; }
 .promo-ok { color: #6ee7a8; margin: 6px 0 0; }
 .total s { font-weight: 400; margin-right: 6px; }
 
