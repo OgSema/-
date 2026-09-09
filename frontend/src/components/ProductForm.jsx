@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
-import { squareCutout } from '../photo'
+import { squareFit } from '../photo'
 import { showAlert } from '../tg'
 import Cropper from './Cropper'
 
@@ -42,14 +42,15 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
   }
 
   /**
-   * Общий вход для картинки, откуда бы она ни пришла: из «Фото», из буфера или
-   * перетаскиванием. Вырезанный объект грузим как есть, обычный снимок сначала
-   * кадрируем — так карточки в каталоге остаются ровными.
+   * Общий вход для картинки. `ready` — она пришла готовой, из буфера или
+   * перетаскиванием: такую вписываем в квадрат целиком, резать из неё середину
+   * незачем. Снимок из «Фото» сначала кадрируем, кроме вырезанного объекта —
+   * тот и так обрезан по контуру.
    */
-  const accept = async (file) => {
+  const accept = async (file, ready = false) => {
     if (!file) return
-    const cutout = await squareCutout(file).catch(() => null)
-    if (cutout) upload(cutout)
+    const square = await squareFit(file, { ready }).catch(() => null)
+    if (square) upload(square)
     else setCropping(file)
   }
 
@@ -65,7 +66,7 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
       const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith('image/'))
       if (!item) return
       e.preventDefault()      // иначе картинка осядет в рамке для вставки
-      accept(item.getAsFile())
+      accept(item.getAsFile(), true)
     }
     document.addEventListener('paste', onPaste)
     return () => document.removeEventListener('paste', onPaste)
@@ -81,7 +82,7 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
     pasteBox.current.innerHTML = ''
     try {
       const blob = await (await fetch(img.src)).blob()
-      accept(new File([blob], 'paste.png', { type: blob.type || 'image/png' }))
+      accept(new File([blob], 'paste.png', { type: blob.type || 'image/png' }), true)
     } catch {
       showAlert('Картинку из буфера прочитать не вышло. Сохраните её в «Фото» и выберите файлом.')
     }
@@ -91,7 +92,7 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
     const file = [...(e.dataTransfer?.files || [])].find((f) => f.type.startsWith('image/'))
     if (!file) return
     e.preventDefault()
-    accept(file)
+    accept(file, true)
   }
 
   const pastePhoto = async () => {
@@ -100,7 +101,7 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
         const type = item.types.find((t) => t.startsWith('image/'))
         if (type) {
           const blob = await item.getType(type)
-          return accept(new File([blob], `paste.${type.split('/')[1]}`, { type }))
+          return accept(new File([blob], `paste.${type.split('/')[1]}`, { type }), true)
         }
       }
       showAlert('В буфере обмена нет картинки')
@@ -196,9 +197,10 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
           onPaste={rescuePasted}
         />
         <p className="muted small">
-          Вырезанный на айфоне объект: перетащите его сюда или нажмите на рамку,
-          подержите палец и выберите «Вставить». Прозрачный фон сохранится,
-          кадрировать такой объект не нужно.
+          Нажмите на рамку, подержите палец и выберите «Вставить» — или перетащите
+          картинку сюда. Вставленная встаёт в карточку целиком, её не обрезают;
+          у вырезанного объекта сохраняется прозрачный фон. Снимок из «Фото»
+          по-прежнему предлагают кадрировать.
         </p>
         {form.photo_url && <img className="preview" src={form.photo_url} alt="" />}
 
